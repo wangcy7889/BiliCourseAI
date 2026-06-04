@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Local environments
+.conda/
+.venv/
+venv/
+env/
+
+# Local runtime data and secrets
+config/*.json
+!config/*.example.json
+data/
+*.log
+
+# Generated reports and temporary frame candidates
+**/frames/_candidates/
+
+# Local references and scratch files
+_refs/
+.pycache_tmp/
+新建 文本文档.txt
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

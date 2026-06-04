@@ -1,0 +1,7 @@
+{
+  "base_url": "https://example.com/v1",
+  "api_key": "YOUR_API_KEY",
+  "text_model": "Ali-dashscope/Qwen3.5-Plus",
+  "vision_model": "Ali-dashscope/Qwen3.5-Plus",
+  "enable_thinking": false
+}

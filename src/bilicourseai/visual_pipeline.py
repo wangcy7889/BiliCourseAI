@@ -1,0 +1,171 @@
+from __future__ import annotations
+
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
+from bilicourseai.frames import capture_candidate_frames, capture_requested_frames, cleanup_candidate_frames
+from bilicourseai.llm import analyze_frames, choose_visual_frames
+from bilicourseai.models import KnowledgeBlock, VideoReport, VisualRequest
+from bilicourseai.settings import LLMSettings
+
+
+ProgressCallback = Callable[[str], None]
+
+
+def _walk_blocks(blocks: list[KnowledgeBlock]):
+    for block in blocks:
+        yield block
+        yield from _walk_blocks(block.children)
+
+
+def _drop_visual_request_refs(report: VideoReport, request_ids: set[str]) -> None:
+    if not request_ids:
+        return
+    for part in report.parts:
+        for block in _walk_blocks(part.blocks):
+            block.visual_requests = [request for request in block.visual_requests if request.id not in request_ids]
+            block.frames = [frame for frame in block.frames if frame.request_id not in request_ids]
+            block.visual_analyses = [
+                analysis for analysis in block.visual_analyses if analysis.request_id not in request_ids
+            ]
+            for section in block.sections:
+                section.visual_requests = [
+                    request for request in section.visual_requests if request.id not in request_ids
+                ]
+                section.frames = [frame for frame in section.frames if frame.request_id not in request_ids]
+                section.visual_analyses = [
+                    analysis for analysis in section.visual_analyses if analysis.request_id not in request_ids
+                ]
+
+
+def _append_unique_text(base: str, addition: str) -> str:
+    base = base.strip()
+    addition = addition.strip()
+    if not addition or addition in base:
+        return base
+    if not base:
+        return addition
+    return f"{base}\n\n补充观察方向：{addition}"
+
+
+def _sync_visual_request(report: VideoReport, merged_request: VisualRequest) -> None:
+    for part in report.parts:
+        for block in _walk_blocks(part.blocks):
+            for index, request in enumerate(block.visual_requests):
+                if request.id == merged_request.id:
+                    block.visual_requests[index] = merged_request
+            for section in block.sections:
+                for index, request in enumerate(section.visual_requests):
+                    if request.id == merged_request.id:
+                        section.visual_requests[index] = merged_request
+
+
+def _merge_duplicate_final_visual_requests(report: VideoReport, requests: list[VisualRequest]) -> tuple[list[VisualRequest], int]:
+    seen: dict[tuple[str, int, float], VisualRequest] = {}
+    kept: list[VisualRequest] = []
+    dropped_ids: set[str] = set()
+    for request in requests:
+        key = (request.block_id, request.part_page, round(request.timestamp, 3))
+        existing = seen.get(key)
+        if existing is not None:
+            existing.reason = _append_unique_text(existing.reason, request.reason)
+            existing.prompt = _append_unique_text(existing.prompt, request.prompt)
+            _sync_visual_request(report, existing)
+            dropped_ids.add(request.id)
+            continue
+        seen[key] = request
+        kept.append(request)
+    if dropped_ids:
+        _drop_visual_request_refs(report, dropped_ids)
+        report.llm_notes.append(
+            f"Merged {len(dropped_ids)} duplicate final visual request(s) into existing frame analysis directions."
+        )
+    return kept, len(dropped_ids)
+
+
+async def run_visual_pipeline(
+    report: VideoReport,
+    requests: list[VisualRequest],
+    settings: LLMSettings,
+    output_dir: Path,
+    *,
+    report_dir: Path | None = None,
+    prefer_stream_frames: bool = True,
+    request_delay: float = 0.0,
+    progress: ProgressCallback | None = None,
+) -> dict[str, Any]:
+    frames_count = 0
+    analyses_count = 0
+    vision_skipped = False
+
+    if requests and not settings.vision_model:
+        vision_skipped = True
+        if progress:
+            progress("Visual requests skipped: vision_model is not configured.")
+    elif requests:
+        if progress:
+            progress(f"Visual requests: {len(requests)}")
+        candidates = await capture_candidate_frames(
+            report,
+            requests,
+            output_dir,
+            prefer_stream=prefer_stream_frames,
+            report_dir=report_dir,
+        )
+        chosen_requests = await choose_visual_frames(
+            report,
+            settings,
+            requests,
+            candidates,
+            request_delay=request_delay,
+        )
+        retry_requests = [request for request in chosen_requests if request.candidate_timestamps]
+        if retry_requests:
+            if progress:
+                progress(f"Visual retries: {len(retry_requests)}")
+            stable_requests = [request for request in chosen_requests if not request.candidate_timestamps]
+            retry_candidates = await capture_candidate_frames(
+                report,
+                retry_requests,
+                output_dir,
+                prefer_stream=prefer_stream_frames,
+                report_dir=report_dir,
+            )
+            chosen_requests = await choose_visual_frames(
+                report,
+                settings,
+                retry_requests,
+                retry_candidates,
+                request_delay=request_delay,
+            )
+            chosen_requests = [*stable_requests, *chosen_requests]
+
+        chosen_requests, duplicate_count = _merge_duplicate_final_visual_requests(report, chosen_requests)
+        if progress and duplicate_count:
+            progress(f"Duplicate final frames skipped: {duplicate_count}")
+
+        frames = await capture_requested_frames(
+            report,
+            chosen_requests,
+            output_dir,
+            prefer_stream=prefer_stream_frames,
+            report_dir=report_dir,
+        )
+        ok_frames = [frame for frame in frames if not frame.error]
+        frames_count = len(ok_frames)
+        if progress:
+            progress(f"Final frames saved: {len(ok_frames)}/{len(frames)}")
+        analyses = await analyze_frames(report, settings, ok_frames, request_delay=request_delay)
+        analyses_count = len(analyses)
+        if progress:
+            progress(f"Vision analyses: {len(analyses)}")
+        if cleanup_candidate_frames(report, output_dir, report_dir=report_dir) and progress:
+            progress("Candidate frames cleaned.")
+
+    return {
+        "visual_requests": len(requests),
+        "frames": frames_count,
+        "analyses": analyses_count,
+        "vision_skipped": vision_skipped,
+    }

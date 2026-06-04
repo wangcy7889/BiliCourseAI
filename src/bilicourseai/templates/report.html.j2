@@ -1,0 +1,976 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ report.title }}</title>
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']],
+        processEscapes: true
+      },
+      svg: { fontCache: 'global' }
+    };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f8fa;
+      --panel: #ffffff;
+      --ink: #1f2937;
+      --muted: #64748b;
+      --line: #d7dde7;
+      --accent: #0f766e;
+      --accent-soft: #d9f3ef;
+      --mark: #b45309;
+      --page-max: 1680px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.55;
+    }
+    header {
+      border-bottom: 1px solid var(--line);
+      background: #fff;
+    }
+    .header-inner {
+      width: min(var(--page-max), calc(100vw - 64px));
+      margin: 0 auto;
+      padding: 28px 0 18px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      max-width: 100%;
+      font-size: 28px;
+      line-height: 1.2;
+      letter-spacing: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    main {
+      width: min(var(--page-max), calc(100vw - 64px));
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
+      gap: 18px;
+      padding: 20px 0 40px;
+    }
+    nav, section {
+      min-width: 0;
+    }
+    .toc {
+      position: sticky;
+      top: 16px;
+      max-height: calc(100vh - 32px);
+      overflow: auto;
+      padding: 16px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .toc a {
+      display: block;
+      padding: 7px 8px;
+      border-radius: 6px;
+      color: var(--ink);
+      text-decoration: none;
+      font-size: 14px;
+    }
+    .toc a:hover {
+      background: var(--accent-soft);
+    }
+    .toc-tree,
+    .toc-children {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .toc-part + .toc-part {
+      margin-top: 8px;
+    }
+    .toc-row {
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr);
+      align-items: center;
+      gap: 2px;
+    }
+    .toc-toggle {
+      width: 24px;
+      height: 28px;
+      padding: 0;
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      color: var(--accent);
+      cursor: pointer;
+      font: inherit;
+      font-size: 13px;
+      line-height: 1;
+    }
+    .toc-toggle:hover {
+      background: var(--accent-soft);
+    }
+    .toc-toggle::before {
+      content: "▸";
+      display: inline-block;
+      transition: transform 0.15s ease;
+    }
+    .toc-toggle[aria-expanded="true"]::before {
+      transform: rotate(90deg);
+    }
+    .toc-spacer {
+      width: 24px;
+      height: 28px;
+    }
+    .toc-node-link {
+      min-width: 0;
+    }
+    .toc-node-link.is-branch {
+      color: var(--muted);
+    }
+    .toc-children {
+      margin-left: 16px;
+    }
+    .toc-children[hidden] {
+      display: none;
+    }
+    .part {
+      margin-bottom: 20px;
+      padding: 20px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    h2 {
+      margin: 0 0 14px;
+      font-size: 20px;
+      letter-spacing: 0;
+    }
+    details {
+      border-top: 1px solid var(--line);
+      padding: 12px 0;
+    }
+    details:first-of-type {
+      border-top: 0;
+    }
+    summary {
+      cursor: pointer;
+      list-style: none;
+      display: grid;
+      grid-template-columns: 108px minmax(0, 1fr);
+      gap: 12px;
+      align-items: baseline;
+    }
+    summary::-webkit-details-marker { display: none; }
+    .time {
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .time a {
+      color: inherit;
+      text-decoration: none;
+      border-bottom: 1px solid color-mix(in srgb, var(--accent), transparent 55%);
+    }
+    .time a:hover {
+      border-bottom-color: var(--accent);
+    }
+    .block-title {
+      font-weight: 650;
+      overflow-wrap: anywhere;
+    }
+    .node-status {
+      display: inline-flex;
+      align-items: center;
+      margin-left: 8px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: #eef2f7;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .summary {
+      margin: 10px 0 0 120px;
+      padding: 12px 14px;
+      color: #334155;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-left: 3px solid var(--accent);
+      border-radius: 8px;
+    }
+    .summary p {
+      margin: 0 0 8px;
+    }
+    .summary p:last-child {
+      margin-bottom: 0;
+    }
+    .summary ol,
+    .summary ul {
+      margin: 8px 0 0;
+      padding-left: 22px;
+    }
+    .summary li {
+      margin-bottom: 8px;
+      padding-left: 2px;
+    }
+    .summary li:last-child {
+      margin-bottom: 0;
+    }
+    .summary strong {
+      color: #0f172a;
+      font-weight: 700;
+    }
+    .summary code,
+    .visual-note-body code,
+    .key-points code {
+      padding: 1px 4px;
+      border-radius: 4px;
+      background: #e2e8f0;
+      color: #0f172a;
+      font-family: "Cascadia Code", Consolas, monospace;
+      font-size: 0.92em;
+    }
+    .summary pre {
+      overflow: auto;
+      padding: 10px;
+      border-radius: 6px;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    .summary h4,
+    .summary h5,
+    .summary h6 {
+      margin: 10px 0 6px;
+      color: #0f172a;
+      letter-spacing: 0;
+    }
+    .key-points {
+      margin: 10px 0 0 120px;
+      padding-left: 22px;
+      color: #1f2937;
+    }
+    .key-points li {
+      margin-bottom: 5px;
+    }
+    .note-sections {
+      margin: 12px 0 0 120px;
+      display: grid;
+      gap: 14px;
+    }
+    .note-section {
+      padding: 12px 14px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-left: 3px solid var(--accent);
+      border-radius: 8px;
+    }
+    .note-section h3 {
+      margin: 0 0 8px;
+      font-size: 16px;
+      letter-spacing: 0;
+      color: #0f172a;
+    }
+    .note-section-body p {
+      margin: 0 0 8px;
+    }
+    .note-section-body p:last-child {
+      margin-bottom: 0;
+    }
+    .note-section-body ul,
+    .note-section-body ol {
+      margin: 8px 0 0;
+      padding-left: 22px;
+    }
+    .note-section-body li {
+      margin-bottom: 6px;
+    }
+    .note-section-body h3,
+    .visual-note-body h3 {
+      margin: 10px 0 6px;
+      font-size: 16px;
+      line-height: 1.35;
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .note-section-body h4,
+    .note-section-body h5,
+    .note-section-body h6,
+    .visual-note-body h4,
+    .visual-note-body h5,
+    .visual-note-body h6 {
+      margin: 8px 0 5px;
+      font-size: 15px;
+      line-height: 1.35;
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .note-section .visual {
+      margin: 12px 0 0;
+      width: min(100%, 1120px);
+      grid-template-columns: minmax(320px, 0.95fr) minmax(300px, 1fr);
+    }
+    .expand-command {
+      margin: 10px 0 0 120px;
+      padding: 9px 10px;
+      border: 1px dashed #cbd5e1;
+      border-radius: 6px;
+      background: #f8fafc;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .expand-command code {
+      display: block;
+      margin-top: 5px;
+      white-space: nowrap;
+      overflow: auto;
+      color: #0f172a;
+      font-family: "Cascadia Code", Consolas, monospace;
+    }
+    .node-actions {
+      margin: 10px 0 0 120px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .node-action {
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      background: var(--accent);
+      color: #fff;
+      padding: 5px 10px;
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .node-action.secondary {
+      background: #fff;
+      color: var(--accent);
+    }
+    .node-action:disabled {
+      cursor: wait;
+      opacity: 0.65;
+    }
+    .node-action-status {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .child-blocks {
+      margin: 12px 0 0 120px;
+      border-left: 2px solid #e2e8f0;
+      padding-left: 14px;
+    }
+    .child-blocks details {
+      border-top: 1px solid #eef2f7;
+    }
+    .transcript {
+      margin: 8px 0 0;
+      padding: 10px 12px;
+      background: #fbfcfe;
+      border-left: 3px solid var(--accent);
+      color: #334155;
+      font-size: 14px;
+    }
+    .transcript p {
+      margin: 0 0 8px;
+    }
+    .transcript p:last-child {
+      margin-bottom: 0;
+    }
+    .transcript-toggle {
+      margin: 12px 0 0 120px;
+      padding: 0;
+      border-top: 0;
+    }
+    .transcript-toggle > summary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 0;
+      color: var(--muted);
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .transcript-toggle > summary::before {
+      content: "▸";
+      color: var(--accent);
+      font-size: 12px;
+      transition: transform 0.15s ease;
+    }
+    .transcript-toggle[open] > summary::before {
+      transform: rotate(90deg);
+    }
+    .transcript-toggle > summary:hover {
+      color: var(--accent);
+    }
+    .visual {
+      margin: 14px 0 0 120px;
+      display: grid;
+      width: min(100%, 1180px);
+      grid-template-columns: minmax(340px, 0.95fr) minmax(300px, 1fr);
+      gap: 20px;
+      align-items: start;
+      padding: 16px;
+      background: #f8fafc;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .visual > div {
+      min-width: 0;
+      max-width: 72ch;
+    }
+    .visual img {
+      width: 100%;
+      height: auto;
+      max-height: 560px;
+      object-fit: contain;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      background: #fff;
+      cursor: zoom-in;
+    }
+    .visual a {
+      display: block;
+      color: inherit;
+    }
+    .image-button {
+      display: block;
+      width: 100%;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      text-align: inherit;
+    }
+    .visual h3 {
+      margin: 0 0 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid color-mix(in srgb, var(--accent), transparent 72%);
+      font-size: 16px;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+    .visual h3 a {
+      color: inherit;
+      text-decoration: none;
+      border-bottom: 1px solid color-mix(in srgb, var(--accent), transparent 55%);
+    }
+    .visual h3 a:hover {
+      border-bottom-color: var(--accent);
+    }
+    .visual p {
+      margin: 6px 0;
+      color: #334155;
+      font-size: 14px;
+    }
+    .visual ul {
+      margin: 6px 0 0;
+      padding-left: 18px;
+      color: #334155;
+      font-size: 14px;
+    }
+    .visual-note {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .visual > div > .visual-note-body + .visual-note {
+      margin-top: 14px;
+      padding-top: 10px;
+      border-top: 1px solid #e2e8f0;
+    }
+    .visual-note-item {
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 10px;
+      align-items: baseline;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .visual-note-item:last-child {
+      padding-bottom: 0;
+      border-bottom: 0;
+    }
+    .visual-note-label {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent);
+      background: var(--accent-soft);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .visual-note-body {
+      min-width: 0;
+      max-width: 62ch;
+      color: #334155;
+      font-size: 14px;
+      line-height: 1.65;
+    }
+    .visual-note-body p {
+      margin: 0;
+    }
+    .visual-note-body ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+    .visual-note-body li {
+      margin-bottom: 4px;
+    }
+    .visual-note-body li:last-child {
+      margin-bottom: 0;
+    }
+    .lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      padding: 28px;
+      background: rgba(15, 23, 42, 0.86);
+      align-items: center;
+      justify-content: center;
+    }
+    .lightbox.open {
+      display: flex;
+    }
+    .lightbox img {
+      max-width: 96vw;
+      max-height: 92vh;
+      border-radius: 6px;
+      background: #fff;
+    }
+    .lightbox-close {
+      position: fixed;
+      top: 18px;
+      right: 22px;
+      color: #fff;
+      text-decoration: none;
+      font-size: 28px;
+      line-height: 1;
+    }
+    .empty {
+      color: var(--mark);
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    @media (max-width: 820px) {
+      .header-inner {
+        width: auto;
+        margin: 0;
+        padding: 22px 18px 14px;
+      }
+      main {
+        width: auto;
+        margin: 0;
+        display: block;
+        padding: 14px 18px 32px;
+      }
+      .toc {
+        position: static;
+        max-height: none;
+        margin-bottom: 16px;
+      }
+      summary {
+        grid-template-columns: 1fr;
+        gap: 4px;
+      }
+      .summary, .key-points, .transcript-toggle, .expand-command, .child-blocks, .note-sections, .node-actions {
+        margin-left: 0;
+      }
+      .visual {
+        margin-left: 0;
+        grid-template-columns: 1fr;
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <h1>{{ report.title }}</h1>
+      <div class="meta">
+        <span>{{ report.bvid }}</span>
+        {% if report.owner_name %}<span>UP: {{ report.owner_name }}</span>{% endif %}
+        <a href="{{ report.source_url }}">{{ report.source_url }}</a>
+      </div>
+    </div>
+  </header>
+  <main>
+    <nav>
+      <div class="toc">
+        {% macro render_toc_block(block, depth=0) %}
+          {% if block.node_type != "raw" %}
+            {% set visible_children = block.children|rejectattr("node_type", "equalto", "raw")|list %}
+            <li class="toc-node">
+              <div class="toc-row">
+                {% if visible_children %}
+                  <button class="toc-toggle" type="button" aria-expanded="false" aria-controls="toc-children-{{ block.id }}" aria-label="展开 {{ block.title }}"></button>
+                  <a class="toc-node-link is-branch" href="#{{ block.id }}" data-toc-branch>{{ block.title }}</a>
+                {% else %}
+                  <span class="toc-spacer"></span>
+                  <a class="toc-node-link" href="#{{ block.id }}">{{ block.title }}</a>
+                {% endif %}
+              </div>
+              {% if visible_children %}
+                <ul class="toc-children" id="toc-children-{{ block.id }}" hidden>
+                  {% for child in visible_children %}
+                    {{ render_toc_block(child, depth + 1) }}
+                  {% endfor %}
+                </ul>
+              {% endif %}
+            </li>
+          {% endif %}
+        {% endmacro %}
+        {% for part in report.parts %}
+          {% if part.blocks %}
+            <div class="toc-part">
+              {% set part_title = "题目目录" if part.page == 0 else ("P" ~ part.page ~ " " ~ part.title) %}
+              {% set visible_roots = part.blocks|rejectattr("node_type", "equalto", "raw")|list %}
+              {% set single_leaf_part = visible_roots|length == 1 and visible_roots[0].node_type == "leaf" and not (visible_roots[0].children|rejectattr("node_type", "equalto", "raw")|list) %}
+              {% if single_leaf_part %}
+                <div class="toc-row">
+                  <span class="toc-spacer"></span>
+                  <a class="toc-node-link" href="#{{ visible_roots[0].id }}">{{ part_title }}</a>
+                </div>
+              {% else %}
+                <div class="toc-row">
+                  <button class="toc-toggle" type="button" aria-expanded="false" aria-controls="toc-part-children-{{ part.page }}" aria-label="展开 {{ part_title }}"></button>
+                  <a class="toc-node-link is-branch" href="#part-{{ part.page }}" data-toc-branch>{{ part_title }}</a>
+                </div>
+                <ul class="toc-tree toc-children" id="toc-part-children-{{ part.page }}" hidden>
+                  {% for block in visible_roots %}
+                    {{ render_toc_block(block) }}
+                  {% endfor %}
+                </ul>
+              {% endif %}
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </nav>
+    <section>
+      {% for part in report.parts %}
+        {% if part.blocks %}
+        <article class="part" id="part-{{ part.page }}">
+          <h2>{{ "题目目录" if part.page == 0 else ("P" ~ part.page ~ " " ~ part.title) }}</h2>
+          {% if part.selected_subtitle_track %}
+            <div class="meta">
+              <span>字幕: {{ part.selected_subtitle_track.lan_doc or part.selected_subtitle_track.lan }}</span>
+              <span>{{ "AI" if part.selected_subtitle_track.is_ai else "人工/未知" }}</span>
+            </div>
+          {% endif %}
+          {% if not part.transcript %}
+            <div class="empty">没有抓取到字幕。后续可接入 cookies、ASR 或本地视频音频提取。</div>
+          {% endif %}
+          {% macro render_block(block, part) %}
+            {% if block.node_type != "raw" %}
+              {% set display_part_page = block.source_part_page or part.page %}
+              <details id="{{ block.id }}" open>
+                <summary>
+                  <span class="time">
+                    <a href="{{ report.source_url|bilibili_time_url(display_part_page, block.start) }}" target="_blank" rel="noopener">
+                      {{ block.start|time_label }} - {{ block.end|time_label }}
+                    </a>
+                  </span>
+                  <span class="block-title">
+                    {{ block.title }}
+                    <span class="node-status">{{ "待生成" if block.status == "skeleton" and block.node_type == "leaf" else ("骨架" if block.status == "skeleton" else ("叶子" if block.node_type == "leaf" else "节点")) }}</span>
+                  </span>
+                </summary>
+                {% if block.summary and not block.sections %}
+                  <div class="summary">{{ block.summary|note_html }}</div>
+                {% endif %}
+                <div class="node-actions" data-block-actions="{{ block.id }}">
+                  {% if block.status == "skeleton" %}
+                    <button class="node-action" type="button" data-action="expand" data-report="report.json" data-block-id="{{ block.id }}">{{ "展开为笔记" if block.node_type == "leaf" else "展开划分" }}</button>
+                  {% endif %}
+                  {% if block.status == "expanded" %}
+                    <button class="node-action secondary" type="button" data-action="redo" data-report="report.json" data-block-id="{{ block.id }}">{{ "重做笔记" if block.node_type == "leaf" else "重做划分" }}</button>
+                  {% endif %}
+                  <span class="node-action-status" aria-live="polite"></span>
+                </div>
+                {% if block.status == "skeleton" and block.node_type == "leaf" %}
+                  <div class="expand-command" data-serve-hint>
+                    本地交互服务
+                    <code>bilicourse serve .</code>
+                  </div>
+                {% endif %}
+                {% if block.key_points %}
+                  <ul class="key-points">
+                    {% for point in block.key_points %}
+                      <li>{{ point|md_inline }}</li>
+                    {% endfor %}
+                  </ul>
+                {% endif %}
+                {% if block.sections %}
+                  <div class="note-sections">
+                    {% for section in block.sections %}
+                      <section class="note-section">
+                        <h3>{{ section.title }}</h3>
+                        <div class="note-section-body">{{ section.body|md_html }}</div>
+                        {% for frame in section.frames %}
+                          <div class="visual">
+                            {% if frame.error %}
+                              <div class="empty">截图失败：{{ frame.error }}</div>
+                            {% else %}
+                              <button class="image-button" type="button" data-lightbox-src="{{ frame.path|relative_asset(report_dir) }}" data-lightbox-alt="P{{ frame.part_page }} {{ frame.timestamp|time_label }}">
+                                <img src="{{ frame.path|relative_asset(report_dir) }}" alt="P{{ frame.part_page }} {{ frame.timestamp|time_label }}">
+                              </button>
+                            {% endif %}
+                            <div>
+                              <h3>
+                                <a href="{{ report.source_url|bilibili_time_url(frame.part_page, frame.timestamp) }}" target="_blank" rel="noopener">
+                                  辅助理解图 · {{ frame.timestamp|time_label }}
+                                </a>
+                              </h3>
+                              {% for request in section.visual_requests %}
+                                {% if request.id == frame.request_id %}
+                                  <div class="visual-note-body">{{ request.reason|md_html }}</div>
+                                {% endif %}
+                              {% endfor %}
+                              {% for analysis in section.visual_analyses %}
+                                {% if analysis.request_id == frame.request_id %}
+                                  <div class="visual-note">
+                                    {% if analysis.summary %}
+                                      <div class="visual-note-item">
+                                        <span class="visual-note-label">看什么</span>
+                                        <div class="visual-note-body">{{ analysis.summary|visual_note_text|md_inline }}</div>
+                                      </div>
+                                    {% endif %}
+                                    {% if analysis.learning_value %}
+                                      <div class="visual-note-item">
+                                        <span class="visual-note-label">为什么</span>
+                                        <div class="visual-note-body">{{ analysis.learning_value|visual_note_text|md_inline }}</div>
+                                      </div>
+                                    {% endif %}
+                                    {% if analysis.guidance %}
+                                      <div class="visual-note-item">
+                                        <span class="visual-note-label">怎么用</span>
+                                        <div class="visual-note-body">{{ analysis.guidance|visual_note_text|md_inline }}</div>
+                                      </div>
+                                    {% endif %}
+                                  </div>
+                                {% endif %}
+                              {% endfor %}
+                            </div>
+                          </div>
+                        {% endfor %}
+                      </section>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+                {% for frame in block.frames %}
+                  {% set frame_request = (block.visual_requests|selectattr("id", "equalto", frame.request_id)|list|first) %}
+                  {% if not frame_request or not frame_request.section_id %}
+                    <div class="visual">
+                      {% if frame.error %}
+                        <div class="empty">截图失败：{{ frame.error }}</div>
+                      {% else %}
+                        <button class="image-button" type="button" data-lightbox-src="{{ frame.path|relative_asset(report_dir) }}" data-lightbox-alt="P{{ frame.part_page }} {{ frame.timestamp|time_label }}">
+                          <img src="{{ frame.path|relative_asset(report_dir) }}" alt="P{{ frame.part_page }} {{ frame.timestamp|time_label }}">
+                        </button>
+                      {% endif %}
+                  <div>
+                      <h3>
+                        <a href="{{ report.source_url|bilibili_time_url(frame.part_page, frame.timestamp) }}" target="_blank" rel="noopener">
+                          辅助理解图 · {{ frame.timestamp|time_label }}
+                        </a>
+                      </h3>
+                      {% for request in block.visual_requests %}
+                        {% if request.id == frame.request_id %}
+                          <div class="visual-note-body">{{ request.reason|md_html }}</div>
+                        {% endif %}
+                      {% endfor %}
+                      {% for analysis in block.visual_analyses %}
+                        {% if analysis.request_id == frame.request_id %}
+                          <div class="visual-note">
+                            {% if analysis.summary %}
+                              <div class="visual-note-item">
+                                <span class="visual-note-label">看什么</span>
+                                <div class="visual-note-body">{{ analysis.summary|visual_note_text|md_inline }}</div>
+                              </div>
+                            {% endif %}
+                            {% if analysis.learning_value %}
+                              <div class="visual-note-item">
+                                <span class="visual-note-label">为什么</span>
+                                <div class="visual-note-body">{{ analysis.learning_value|visual_note_text|md_inline }}</div>
+                              </div>
+                            {% endif %}
+                            {% if analysis.guidance %}
+                              <div class="visual-note-item">
+                                <span class="visual-note-label">怎么用</span>
+                                <div class="visual-note-body">{{ analysis.guidance|visual_note_text|md_inline }}</div>
+                              </div>
+                            {% endif %}
+                            {% if analysis.observed_elements %}
+                              <div class="visual-note-item">
+                                <span class="visual-note-label">图中元素</span>
+                                <div class="visual-note-body">
+                                  <ul>
+                                    {% for item in analysis.observed_elements[:4] %}
+                                      <li>{{ item|md_inline }}</li>
+                                    {% endfor %}
+                                  </ul>
+                                </div>
+                              </div>
+                            {% endif %}
+                            {% if analysis.pitfalls %}
+                              <div class="visual-note-item">
+                                <span class="visual-note-label">易错点</span>
+                                <div class="visual-note-body">
+                                  <ul>
+                                    {% for item in analysis.pitfalls[:3] %}
+                                      <li>{{ item|md_inline }}</li>
+                                    {% endfor %}
+                                  </ul>
+                                </div>
+                              </div>
+                            {% endif %}
+                          </div>
+                        {% endif %}
+                    {% endfor %}
+                  </div>
+                </div>
+                  {% endif %}
+              {% endfor %}
+                {% for child in block.children %}
+                  {% if child.node_type == "raw" %}
+                    <details class="transcript-toggle">
+                      <summary>原始字幕</summary>
+                      <div class="transcript">
+                        {% for sentence in child.transcript|sentences %}
+                          <p>{{ sentence }}</p>
+                        {% endfor %}
+                      </div>
+                    </details>
+                  {% endif %}
+                {% endfor %}
+                {% set visible_children = block.children|rejectattr("node_type", "equalto", "raw")|list %}
+                {% if visible_children %}
+                  <div class="child-blocks">
+                    {% for child in visible_children %}
+                      {{ render_block(child, part) }}
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </details>
+            {% endif %}
+          {% endmacro %}
+          {% for block in part.blocks %}
+            {{ render_block(block, part) }}
+          {% endfor %}
+        </article>
+        {% endif %}
+      {% endfor %}
+    </section>
+  </main>
+  <div class="lightbox" id="image-lightbox" aria-hidden="true">
+    <button class="lightbox-close" type="button" aria-label="关闭">×</button>
+    <img id="lightbox-image" alt="">
+  </div>
+  <script>
+    const lightbox = document.getElementById('image-lightbox');
+    const lightboxImage = document.getElementById('lightbox-image');
+    const closeLightbox = () => {
+      lightbox.classList.remove('open');
+      lightbox.setAttribute('aria-hidden', 'true');
+      lightboxImage.removeAttribute('src');
+    };
+    document.querySelectorAll('.image-button').forEach((button) => {
+      button.addEventListener('click', () => {
+        lightboxImage.src = button.dataset.lightboxSrc;
+        lightboxImage.alt = button.dataset.lightboxAlt || '';
+        lightbox.classList.add('open');
+        lightbox.setAttribute('aria-hidden', 'false');
+      });
+    });
+    lightbox.addEventListener('click', (event) => {
+      if (event.target === lightbox) closeLightbox();
+    });
+    document.querySelector('.lightbox-close').addEventListener('click', closeLightbox);
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') closeLightbox();
+    });
+
+    const toggleTocNode = (button) => {
+      const children = document.getElementById(button.getAttribute('aria-controls'));
+      if (!children) return;
+      const expanded = button.getAttribute('aria-expanded') === 'true';
+      button.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+      button.setAttribute('aria-label', `${expanded ? '展开' : '收起'} ${button.closest('.toc-row')?.querySelector('.toc-node-link')?.textContent?.trim() || '目录节点'}`);
+      children.hidden = expanded;
+    };
+    document.querySelectorAll('.toc-toggle').forEach((button) => {
+      button.addEventListener('click', () => toggleTocNode(button));
+    });
+    document.querySelectorAll('[data-toc-branch]').forEach((link) => {
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        const button = link.closest('.toc-row')?.querySelector('.toc-toggle');
+        if (button) toggleTocNode(button);
+      });
+    });
+
+    const isServedReport = window.location.protocol === 'http:' || window.location.protocol === 'https:';
+    document.querySelectorAll('[data-serve-hint]').forEach((hint) => {
+      if (isServedReport) hint.hidden = true;
+    });
+    document.querySelectorAll('.node-action').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const container = button.closest('.node-actions');
+        const status = container ? container.querySelector('.node-action-status') : null;
+        const action = button.dataset.action;
+        if (!isServedReport) {
+          if (status) status.textContent = '请先在报告目录运行 bilicourse serve .';
+          return;
+        }
+        const buttons = container ? Array.from(container.querySelectorAll('.node-action')) : [button];
+        buttons.forEach((item) => { item.disabled = true; });
+        if (status) status.textContent = action === 'redo' ? '正在重做...' : '正在生成...';
+        try {
+          const response = await fetch(`/api/${action}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              report: button.dataset.report,
+              block_id: button.dataset.blockId
+            })
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok || !payload.ok) {
+            throw new Error(payload.error || payload.message || response.statusText || '请求失败');
+          }
+          if (status) status.textContent = '完成，正在刷新...';
+          window.location.reload();
+        } catch (error) {
+          if (status) status.textContent = `失败：${error.message}`;
+          buttons.forEach((item) => { item.disabled = false; });
+        }
+      });
+    });
+  </script>
+</body>
+</html>
