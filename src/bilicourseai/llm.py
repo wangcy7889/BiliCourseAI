@@ -171,7 +171,6 @@ def _find_block(report: VideoReport, block_id: str):
 
 def visual_candidate_timestamps(start: float, end: float, timestamp: float, radius: float = 8.0) -> list[float]:
     duration = max(0.0, end - start)
-    local = [timestamp - radius, timestamp - radius / 2, timestamp, timestamp + radius / 2, timestamp + radius]
     if duration >= 24:
         anchors = [
             start + duration * 0.18,
@@ -182,8 +181,29 @@ def visual_candidate_timestamps(start: float, end: float, timestamp: float, radi
         ]
     else:
         anchors = [start, start + duration * 0.5, end]
-    values = [max(start, min(end, value)) for value in [*local, *anchors]]
+    values = [max(start, min(end, value)) for value in [timestamp, *anchors]]
     return sorted({round(value, 3) for value in values})
+
+
+def _candidate_timestamps_from_payload(
+    visual: dict[str, Any],
+    start: float,
+    end: float,
+    timestamp: float,
+) -> list[float]:
+    raw_values = visual.get("candidate_timestamps") or visual.get("candidate_times") or []
+    candidates: list[float] = []
+    if isinstance(raw_values, list):
+        for value in raw_values:
+            try:
+                candidates.append(float(value))
+            except (TypeError, ValueError):
+                continue
+    candidates.append(timestamp)
+    cleaned = sorted({round(max(start, min(end, value)), 3) for value in candidates})
+    if len(cleaned) >= 2:
+        return cleaned[:7]
+    return visual_candidate_timestamps(start, end, timestamp)
 
 
 def _transcript_windows(report: VideoReport, window_seconds: int) -> list[dict[str, Any]]:
@@ -960,7 +980,7 @@ async def expand_block(
             part_page=part.page,
             block_id=block.id,
             timestamp=timestamp,
-            candidate_timestamps=visual_candidate_timestamps(block.start, block.end, timestamp),
+            candidate_timestamps=_candidate_timestamps_from_payload(visual, block.start, block.end, timestamp),
             reason=reason,
             prompt=prompt,
             section_id=section.id if section is not None else None,
@@ -1035,7 +1055,10 @@ async def _expand_block_payload(
             "Bind visual requests to the section where the image should appear, using section_index.",
             "Use Markdown math for formulas whenever useful: inline `$...$`, display `$$...$$`, or `\\(...\\)` / `\\[...\\]`.",
             "Because the response is JSON, escape LaTeX backslashes correctly as `\\\\` inside JSON strings.",
+            "Treat subtitles as noisy evidence, not ground truth. Do not imply 100% confidence when the note depends on a precise word, number, formula, variable, code identifier, graph node, path label, table label, or proper noun extracted from subtitles.",
+            "For high-risk details, cross-check surrounding context and request a visual aid when the slide/board can disambiguate it. If still uncertain, mark it as uncertain or say it appears to be so, instead of guessing.",
             "For leaf visual requests, choose timestamps where the slide/board/UI is likely content-rich, not transition/typing-empty frames.",
+            "For each visual request, provide candidate_timestamps: 3-7 precise seconds inside this block where the relevant visual may be most complete. Choose them semantically from the transcript and topic flow; do not use mechanical offsets like t-8,t-4,t,t+4,t+8.",
             "A leaf may request zero, one, or multiple images according to learning value.",
         ],
         "force_leaf": force_leaf,
@@ -1068,6 +1091,7 @@ async def _expand_block_payload(
                         {
                             "needed": "boolean",
                             "timestamp": "number",
+                            "candidate_timestamps": ["number, 3-7 semantic candidate seconds inside the block"],
                             "reason": "Markdown string",
                             "prompt": "Markdown string",
                         }
@@ -1078,6 +1102,7 @@ async def _expand_block_payload(
                 {
                     "needed": "boolean",
                     "timestamp": "number",
+                    "candidate_timestamps": ["number, 3-7 semantic candidate seconds inside the block"],
                     "section_index": "number, 1-based, if this image belongs to a leaf section",
                     "reason": "Markdown string",
                     "prompt": "Markdown string",
@@ -1183,6 +1208,7 @@ async def ai_segment_report(
                     part_page=part.page,
                     block_id=block_id,
                     timestamp=timestamp,
+                    candidate_timestamps=_candidate_timestamps_from_payload(visual, start, end, timestamp),
                     reason=str(visual.get("reason") or "").strip(),
                     prompt=str(visual.get("prompt") or "").strip()
                     or "Analyze this frame as a visual aid for understanding the note block.",
@@ -1224,6 +1250,7 @@ async def _segment_window(
             "Prefer clear formulas over vague prose for definitions, derivations, constraints, and transformations.",
             "If slides, formulas, diagrams, tables, code, or visible written examples would improve understanding, request visual aid frames.",
             "A block may need multiple visual aid frames when the board/slide evolves across steps, formulas transform, examples are solved in stages, or several distinct diagrams are discussed.",
+            "For each visual request, provide candidate_timestamps: 3-7 precise seconds inside the block where the relevant visual may be most complete. Choose them semantically from the transcript and topic flow; do not use mechanical offsets like t-8,t-4,t,t+4,t+8.",
             "Do not force one-image-per-block. Use zero, one, or multiple images according to learning value.",
         ],
         "schema": {
@@ -1238,6 +1265,7 @@ async def _segment_window(
                         {
                             "needed": "boolean",
                             "timestamp": "number",
+                            "candidate_timestamps": ["number, 3-7 semantic candidate seconds inside the block"],
                             "reason": "Markdown string",
                             "prompt": "Markdown string",
                         }
@@ -1344,6 +1372,7 @@ async def enrich_report_text(
                 part_page=part_page,
                 block_id=block_id,
                 timestamp=timestamp,
+                candidate_timestamps=_candidate_timestamps_from_payload(item, block.start, block.end, timestamp),
                 reason=str(item.get("reason") or "").strip(),
                 prompt=str(item.get("prompt") or "").strip()
                 or "Describe the educational content visible in this frame.",
@@ -1385,6 +1414,8 @@ async def _enrich_block_batch(
             "For visual requests, choose the most relevant precise moment. Use decimal seconds when useful; do not round to whole seconds by default.",
             "Do not request screenshots for purely conversational sections.",
             "When a block depends on slides, diagrams, formulas, code, UI, tables, architecture, or workflow visuals, request a screenshot. Good course notes should keep useful visual aids.",
+            "Treat subtitles as noisy evidence, not ground truth. If a block contains high-risk details such as exact terms, numbers, formulas, variables, code identifiers, table labels, graph nodes, or flowchart paths, use the visual request prompt to ask the vision model to verify them when possible.",
+            "For each visual request, provide candidate_timestamps: 3-7 precise seconds inside the block where the relevant visual may be most complete. Choose them semantically from the transcript and topic flow; do not use mechanical offsets like t-8,t-4,t,t+4,t+8.",
             "Prefer at most one screenshot per block unless multiple distinct visuals are necessary.",
         ],
         "limits": {
@@ -1403,6 +1434,7 @@ async def _enrich_block_batch(
                 {
                     "block_id": "string",
                     "timestamp": "number",
+                    "candidate_timestamps": ["number, 3-7 semantic candidate seconds inside the block"],
                     "reason": "Markdown string",
                     "prompt": "Markdown string",
                 }
@@ -1473,6 +1505,8 @@ async def analyze_frames(
                 "Be brief. summary <= 80 Chinese characters, learning_value <= 80 Chinese characters, guidance <= 120 Chinese characters.",
                 "Do not copy, paraphrase, or restate the whole block note. Focus only on this image's added value.",
                 "For math course frames, identify the visible formula, diagram, table, or solving step first, then explain how it supports the current note.",
+                "For any visible symbol-like text, such as formulas, variables, code identifiers, table labels, graph nodes, or flowchart paths, transcribe the exact visible symbols before interpreting them.",
+                "Subtitles and prior notes may contain noise. If they conflict with the visible image, point out the mismatch and state which reading is better supported. If the image is unclear, say it is unclear and lower confidence.",
                 "When the frame contains multiple merged visual_focus directions, synthesize them into one coherent explanation instead of listing duplicate image reports.",
                 "If the requested visual_focus is not actually visible in the frame, say what is visible and how it can still help; do not invent missing formulas or diagrams.",
                 "Prefer problem-solving guidance: what structure to recognize, what transformation is being used, and which exam mistake it prevents.",
@@ -1596,7 +1630,7 @@ async def choose_visual_frames(
                 "Pick one candidate only if it is genuinely good enough for a study note.",
                 "If all candidates are poor, mostly blank, transitional, or show only partial typing/input, return retry_timestamp instead of choosing the least bad candidate.",
                 "For UI typing or animated build-up, prefer a later completed state.",
-                "The retry timestamp may be anywhere inside the block range; use the transcript/context to estimate a richer moment.",
+                "The candidates are semantic guesses, not fixed offsets. If they miss the best moment, retry_timestamp may be anywhere inside the block range; use the transcript/context to estimate a richer moment.",
                 "Prefer frames where the slide/board/UI is visually complete and useful for learning.",
             ],
             "block": {
@@ -1734,6 +1768,7 @@ async def _rewrite_visual_note(
             "observed_elements: 1-4 short items.",
             "pitfalls: 0-3 short items.",
             "Write as a note beside an image, not as an essay.",
+            "Preserve exact symbols, formulas, code identifiers, graph nodes, and flowchart paths from the visual analysis only when the analysis is confident. If it marks something as unclear or conflicting, keep that uncertainty instead of smoothing it away.",
         ],
         "block": {
             "title": block.title,

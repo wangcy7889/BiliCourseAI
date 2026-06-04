@@ -30,11 +30,9 @@ BiliCourseAI 是一个面向 Bilibili 课程视频的 AI 辅助学习报告 CLI 
 ### Windows PowerShell
 
 ```powershell
-git clone https://github.com/YOUR_NAME/BiliCourseAI.git
+git clone https://github.com/wangcy7889/BiliCourseAI.git
 cd BiliCourseAI
 
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
 python -m pip install -e .
 
@@ -44,11 +42,9 @@ bilicourse --help
 ### Linux / macOS
 
 ```bash
-git clone https://github.com/YOUR_NAME/BiliCourseAI.git
+git clone https://github.com/wangcy7889/BiliCourseAI.git
 cd BiliCourseAI
 
-python3 -m venv .venv
-source .venv/bin/activate
 python -m pip install -U pip
 python -m pip install -e .
 

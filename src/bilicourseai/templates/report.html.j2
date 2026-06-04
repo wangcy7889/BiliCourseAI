@@ -18,14 +18,19 @@
   <style>
     :root {
       color-scheme: light;
-      --bg: #f7f8fa;
+      --bg: #f6f8f7;
       --panel: #ffffff;
-      --ink: #1f2937;
-      --muted: #64748b;
-      --line: #d7dde7;
-      --accent: #0f766e;
-      --accent-soft: #d9f3ef;
-      --mark: #b45309;
+      --ink: #26363c;
+      --muted: #6b8fa7;
+      --line: #d8e2df;
+      --accent: #325969;
+      --accent-soft: #e8f0e7;
+      --accent-mid: #9bb89a;
+      --warm: #f2cdb4;
+      --petal: #ddc7dc;
+      --soft-panel: #fbfaf8;
+      --code-bg: #e8eef0;
+      --mark: #8a5a44;
       --page-max: 1680px;
     }
     * { box-sizing: border-box; }
@@ -201,7 +206,7 @@
       margin-left: 8px;
       padding: 1px 6px;
       border-radius: 999px;
-      background: #eef2f7;
+      background: color-mix(in srgb, var(--petal), white 72%);
       color: var(--muted);
       font-size: 12px;
       font-weight: 500;
@@ -210,9 +215,9 @@
     .summary {
       margin: 10px 0 0 120px;
       padding: 12px 14px;
-      color: #334155;
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
+      color: var(--ink);
+      background: var(--soft-panel);
+      border: 1px solid var(--line);
       border-left: 3px solid var(--accent);
       border-radius: 8px;
     }
@@ -235,7 +240,7 @@
       margin-bottom: 0;
     }
     .summary strong {
-      color: #0f172a;
+      color: var(--accent);
       font-weight: 700;
     }
     .summary code,
@@ -243,8 +248,8 @@
     .key-points code {
       padding: 1px 4px;
       border-radius: 4px;
-      background: #e2e8f0;
-      color: #0f172a;
+      background: var(--code-bg);
+      color: var(--accent);
       font-family: "Cascadia Code", Consolas, monospace;
       font-size: 0.92em;
     }
@@ -252,20 +257,20 @@
       overflow: auto;
       padding: 10px;
       border-radius: 6px;
-      background: #0f172a;
-      color: #e2e8f0;
+      background: var(--accent);
+      color: #f8fbfa;
     }
     .summary h4,
     .summary h5,
     .summary h6 {
       margin: 10px 0 6px;
-      color: #0f172a;
+      color: var(--accent);
       letter-spacing: 0;
     }
     .key-points {
       margin: 10px 0 0 120px;
       padding-left: 22px;
-      color: #1f2937;
+      color: var(--ink);
     }
     .key-points li {
       margin-bottom: 5px;
@@ -277,8 +282,8 @@
     }
     .note-section {
       padding: 12px 14px;
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
+      background: var(--soft-panel);
+      border: 1px solid var(--line);
       border-left: 3px solid var(--accent);
       border-radius: 8px;
     }
@@ -286,7 +291,7 @@
       margin: 0 0 8px;
       font-size: 16px;
       letter-spacing: 0;
-      color: #0f172a;
+      color: var(--accent);
     }
     .note-section-body p {
       margin: 0 0 8px;
@@ -308,7 +313,7 @@
       font-size: 16px;
       line-height: 1.35;
       font-weight: 700;
-      color: #0f172a;
+      color: var(--accent);
     }
     .note-section-body h4,
     .note-section-body h5,
@@ -320,7 +325,7 @@
       font-size: 15px;
       line-height: 1.35;
       font-weight: 700;
-      color: #0f172a;
+      color: var(--accent);
     }
     .note-section .visual {
       margin: 12px 0 0;
@@ -330,9 +335,9 @@
     .expand-command {
       margin: 10px 0 0 120px;
       padding: 9px 10px;
-      border: 1px dashed #cbd5e1;
+      border: 1px dashed color-mix(in srgb, var(--muted), white 45%);
       border-radius: 6px;
-      background: #f8fafc;
+      background: color-mix(in srgb, var(--petal), white 82%);
       color: var(--muted);
       font-size: 13px;
     }
@@ -341,7 +346,7 @@
       margin-top: 5px;
       white-space: nowrap;
       overflow: auto;
-      color: #0f172a;
+      color: var(--accent);
       font-family: "Cascadia Code", Consolas, monospace;
     }
     .node-actions {
@@ -373,20 +378,26 @@
       color: var(--muted);
       font-size: 13px;
     }
+    .global-action-status {
+      color: var(--muted);
+      font-size: 13px;
+      min-height: 20px;
+      margin-top: 8px;
+    }
     .child-blocks {
       margin: 12px 0 0 120px;
-      border-left: 2px solid #e2e8f0;
+      border-left: 2px solid var(--line);
       padding-left: 14px;
     }
     .child-blocks details {
-      border-top: 1px solid #eef2f7;
+      border-top: 1px solid color-mix(in srgb, var(--line), white 45%);
     }
     .transcript {
       margin: 8px 0 0;
       padding: 10px 12px;
-      background: #fbfcfe;
+      background: color-mix(in srgb, var(--accent-soft), white 62%);
       border-left: 3px solid var(--accent);
-      color: #334155;
+      color: var(--ink);
       font-size: 14px;
     }
     .transcript p {
@@ -429,7 +440,7 @@
       gap: 20px;
       align-items: start;
       padding: 16px;
-      background: #f8fafc;
+      background: var(--soft-panel);
       border: 1px solid var(--line);
       border-radius: 8px;
     }
@@ -477,13 +488,13 @@
     }
     .visual p {
       margin: 6px 0;
-      color: #334155;
+      color: var(--ink);
       font-size: 14px;
     }
     .visual ul {
       margin: 6px 0 0;
       padding-left: 18px;
-      color: #334155;
+      color: var(--ink);
       font-size: 14px;
     }
     .visual-note {
@@ -494,7 +505,7 @@
     .visual > div > .visual-note-body + .visual-note {
       margin-top: 14px;
       padding-top: 10px;
-      border-top: 1px solid #e2e8f0;
+      border-top: 1px solid var(--line);
     }
     .visual-note-item {
       display: grid;
@@ -502,7 +513,7 @@
       gap: 10px;
       align-items: baseline;
       padding-bottom: 10px;
-      border-bottom: 1px solid #e2e8f0;
+      border-bottom: 1px solid var(--line);
     }
     .visual-note-item:last-child {
       padding-bottom: 0;
@@ -523,7 +534,7 @@
     .visual-note-body {
       min-width: 0;
       max-width: 62ch;
-      color: #334155;
+      color: var(--ink);
       font-size: 14px;
       line-height: 1.65;
     }
@@ -546,7 +557,7 @@
       inset: 0;
       z-index: 10;
       padding: 28px;
-      background: rgba(15, 23, 42, 0.86);
+      background: rgba(50, 89, 105, 0.88);
       align-items: center;
       justify-content: center;
     }
@@ -570,8 +581,8 @@
     }
     .empty {
       color: var(--mark);
-      background: #fff7ed;
-      border: 1px solid #fed7aa;
+      background: color-mix(in srgb, var(--warm), white 58%);
+      border: 1px solid color-mix(in srgb, var(--warm), var(--mark) 18%);
       border-radius: 8px;
       padding: 12px;
     }
@@ -616,6 +627,7 @@
         {% if report.owner_name %}<span>UP: {{ report.owner_name }}</span>{% endif %}
         <a href="{{ report.source_url }}">{{ report.source_url }}</a>
       </div>
+      <div class="global-action-status" data-global-action-status></div>
     </div>
   </header>
   <main>
@@ -938,8 +950,72 @@
     document.querySelectorAll('[data-serve-hint]').forEach((hint) => {
       if (isServedReport) hint.hidden = true;
     });
+    let activeNodeAction = false;
+    let serverBusySeen = false;
+    let serverStatusTimer = null;
+    const globalActionStatus = document.querySelector('[data-global-action-status]');
+
+    function setAllNodeActionsDisabled(disabled) {
+      document.querySelectorAll('.node-action').forEach((item) => {
+        item.disabled = disabled;
+      });
+    }
+
+    async function refreshServerActionStatus() {
+      if (!isServedReport) {
+        return;
+      }
+      try {
+        const response = await fetch('/api/status', { cache: 'no-store' });
+        const payload = await response.json();
+        if (!payload.ok) {
+          return;
+        }
+        if (payload.busy) {
+          serverBusySeen = true;
+          setAllNodeActionsDisabled(true);
+          if (globalActionStatus) {
+            const actionText = payload.action === 'redo' ? '重做' : '展开';
+            const elapsed = Number(payload.elapsed || 0).toFixed(0);
+            globalActionStatus.textContent = `后端正在${actionText} ${payload.block_id}，已运行 ${elapsed}s，完成后会自动刷新。`;
+          }
+          if (!serverStatusTimer) {
+            serverStatusTimer = window.setInterval(refreshServerActionStatus, 2500);
+          }
+          return;
+        }
+        if (serverBusySeen) {
+          if (globalActionStatus) {
+            globalActionStatus.textContent = '后端处理完成，正在刷新...';
+          }
+          window.location.reload();
+          return;
+        }
+        if (!activeNodeAction) {
+          setAllNodeActionsDisabled(false);
+          if (globalActionStatus) {
+            globalActionStatus.textContent = '';
+          }
+        }
+        if (serverStatusTimer) {
+          window.clearInterval(serverStatusTimer);
+          serverStatusTimer = null;
+        }
+      } catch (error) {
+        if (serverStatusTimer) {
+          window.clearInterval(serverStatusTimer);
+          serverStatusTimer = null;
+        }
+      }
+    }
+
+    refreshServerActionStatus();
+
     document.querySelectorAll('.node-action').forEach((button) => {
       button.addEventListener('click', async () => {
+        if (activeNodeAction) {
+          return;
+        }
         const container = button.closest('.node-actions');
         const status = container ? container.querySelector('.node-action-status') : null;
         const action = button.dataset.action;
@@ -947,8 +1023,12 @@
           if (status) status.textContent = '请先在报告目录运行 bilicourse serve .';
           return;
         }
-        const buttons = container ? Array.from(container.querySelectorAll('.node-action')) : [button];
-        buttons.forEach((item) => { item.disabled = true; });
+        activeNodeAction = true;
+        serverBusySeen = true;
+        setAllNodeActionsDisabled(true);
+        if (globalActionStatus) {
+          globalActionStatus.textContent = '正在处理当前节点，完成刷新后再继续操作。';
+        }
         if (status) status.textContent = action === 'redo' ? '正在重做...' : '正在生成...';
         try {
           const response = await fetch(`/api/${action}`, {
@@ -967,7 +1047,11 @@
           window.location.reload();
         } catch (error) {
           if (status) status.textContent = `失败：${error.message}`;
-          buttons.forEach((item) => { item.disabled = false; });
+          activeNodeAction = false;
+          setAllNodeActionsDisabled(false);
+          if (globalActionStatus) {
+            globalActionStatus.textContent = '';
+          }
         }
       });
     });

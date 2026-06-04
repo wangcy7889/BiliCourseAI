@@ -87,6 +87,12 @@ def create_report_app(
     report_dir = report_dir.resolve()
     output_dir = output_dir or output_dir_for_report_dir(report_dir, DEFAULT_DATA_DIR)
     lock = asyncio.Lock()
+    state: dict[str, Any] = {
+        "busy": False,
+        "action": "",
+        "block_id": "",
+        "started_at": 0.0,
+    }
 
     @web.middleware
     async def json_errors(request: web.Request, handler):
@@ -116,6 +122,18 @@ def create_report_app(
             raise web.HTTPNotFound()
         return web.FileResponse(path)
 
+    async def status(_: web.Request) -> web.Response:
+        elapsed = time.monotonic() - float(state["started_at"]) if state["busy"] else 0.0
+        return web.json_response(
+            {
+                "ok": True,
+                "busy": state["busy"],
+                "action": state["action"],
+                "block_id": state["block_id"],
+                "elapsed": round(elapsed, 1),
+            }
+        )
+
     async def mutate(request: web.Request, *, redo: bool) -> web.Response:
         started = time.monotonic()
         payload = await request.json()
@@ -139,32 +157,43 @@ def create_report_app(
             _log(f"{action} {block_id}: received")
 
         async with lock:
+            state.update(
+                {
+                    "busy": True,
+                    "action": action,
+                    "block_id": block_id,
+                    "started_at": time.monotonic(),
+                }
+            )
             _log(f"{action} {block_id}: started")
-            report = VideoReport.model_validate(json.loads(report_json.read_text(encoding="utf-8")))
-            block = find_block(report, block_id)
-            if block is None:
-                raise web.HTTPNotFound(text=f"Block not found: {block_id}")
-            if redo:
-                _log(f"{action} {block_id}: reset current node state")
-                _reset_block_for_redo(block)
+            try:
+                report = VideoReport.model_validate(json.loads(report_json.read_text(encoding="utf-8")))
+                block = find_block(report, block_id)
+                if block is None:
+                    raise web.HTTPNotFound(text=f"Block not found: {block_id}")
+                if redo:
+                    _log(f"{action} {block_id}: reset current node state")
+                    _reset_block_for_redo(block)
 
-            result = await _expand_current_block(
-                report,
-                block_id,
-                settings,
-                output_dir,
-                report_dir,
-                max_visual_requests=max_visual_requests,
-                prefer_stream_frames=prefer_stream_frames,
-                request_delay=request_delay,
-            )
-            artifacts = write_report_to_dir(report, report_dir)
-            elapsed = time.monotonic() - started
-            _log(
-                f"{action} {block_id}: wrote report.html, "
-                f"frames={result.get('frames', 0)}, analyses={result.get('analyses', 0)}, "
-                f"elapsed={elapsed:.1f}s"
-            )
+                result = await _expand_current_block(
+                    report,
+                    block_id,
+                    settings,
+                    output_dir,
+                    report_dir,
+                    max_visual_requests=max_visual_requests,
+                    prefer_stream_frames=prefer_stream_frames,
+                    request_delay=request_delay,
+                )
+                artifacts = write_report_to_dir(report, report_dir)
+                elapsed = time.monotonic() - started
+                _log(
+                    f"{action} {block_id}: wrote report.html, "
+                    f"frames={result.get('frames', 0)}, analyses={result.get('analyses', 0)}, "
+                    f"elapsed={elapsed:.1f}s"
+                )
+            finally:
+                state.update({"busy": False, "action": "", "block_id": "", "started_at": 0.0})
 
         return web.json_response(
             {
@@ -184,6 +213,7 @@ def create_report_app(
         return await mutate(request, redo=True)
 
     app.router.add_get("/", index)
+    app.router.add_get("/api/status", status)
     app.router.add_post("/api/expand", expand)
     app.router.add_post("/api/redo", redo)
     app.router.add_get("/{path:.*}", static_file)
