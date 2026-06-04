@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from bilicourseai.models import KnowledgeBlock, TranscriptLine, VideoPart
-from bilicourseai.transcript_utils import lines_for_range, transcript_items_limited
+from bilicourseai.transcripts.transcript import lines_for_range, transcript_items_limited
 
 
 BOUNDARY_REVIEW_MAX_CHARS = 32000

@@ -159,6 +159,14 @@ bilicourse outline BVxxxxxxxxxx \
   --llm-request-delay 2.2
 ```
 
+如果只想先生成某一个分 P，适合分 P 很多的大合集：
+
+```bash
+bilicourse outline BVxxxxxxxxxx --part-page 8
+```
+
+此模式只会抓取指定分 P 的字幕，不会逐个初始化其他分 P。如果同一个报告目录里已经有其他分 P，已有内容会被保留。
+
 输出通常位于：
 
 ```text
@@ -172,6 +180,14 @@ data/reports/视频标题__BV号/report.html
 
 ```bash
 bilicourse serve "data/reports/视频标题__BV号"
+```
+
+也可以用更短的写法，只要能唯一匹配 `data/reports` 下的报告目录即可：
+
+```bash
+bilicourse serve BVxxxxxxxxxx
+bilicourse serve "标题关键词"
+bilicourse serve "data/reports/视频标题__BV号/report.json"
 ```
 
 浏览器打开：
@@ -215,7 +231,7 @@ bilicourse expand "data/reports/视频标题__BV号/report.json" \
 ```bash
 bilicourse probe BVxxxxxxxxxx
 bilicourse outline BVxxxxxxxxxx --outline-window-seconds 720 --outline-overlap-seconds 75
-bilicourse serve "data/reports/视频标题__BV号"
+bilicourse serve BVxxxxxxxxxx
 ```
 
 策略：
@@ -226,13 +242,29 @@ bilicourse serve "data/reports/视频标题__BV号"
 - 内部软窗口只用于控制上下文长度，不作为用户可见节点
 - 过长 leaf 会被质量门改成 branch，提示继续展开
 
+### 多 P 大合集的单 P 快速初始化
+
+当一个视频合集有很多分 P，而你只想先分析其中某一 P 时，使用：
+
+```bash
+bilicourse outline BVxxxxxxxxxx --part-page 42
+```
+
+这个模式会先获取视频基本信息和分 P 列表，用来定位 P42 的 `cid`；随后只抓取 P42 的字幕、只对 P42 生成 outline。它不会逐个抓取其他分 P 字幕，所以适合先从大合集里挑一个分 P 初始化。
+
+增量行为：
+
+- 第一次运行 `--part-page 7`：生成只包含 P7 的报告。
+- 之后运行 `--part-page 8`：只抓取并生成 P8，同时保留已有的 P7。
+- 不带 `--part-page`：初始化/更新完整视频报告，会逐个处理所有分 P。
+
 ### 逐题讲解或合集视频
 
 如果一个分 P 基本对应一道题，优先使用题目树模式：
 
 ```bash
 bilicourse outline BVxxxxxxxxxx --part-tree-mode question
-bilicourse serve "data/reports/视频标题__BV号"
+bilicourse serve BVxxxxxxxxxx
 ```
 
 ## 常用参数
@@ -247,7 +279,7 @@ bilicourse serve "data/reports/视频标题__BV号"
 
 `--part-page N`
 
-只处理第 N 个分 P，适合调试长视频。
+只抓取并处理第 N 个分 P。适合多 P 大合集的快速初始化，也适合调试指定分 P；已有报告中的其他分 P 会保留。
 
 `--part-tree-mode question`
 
@@ -329,28 +361,24 @@ bilicourse serve --help
 
 ```bash
 python -m pip install -e .
-python -m py_compile src/bilicourseai/*.py
+python - <<'PY'
+from pathlib import Path
+import py_compile
+for path in Path("src/bilicourseai").rglob("*.py"):
+    py_compile.compile(str(path), doraise=True)
+PY
 ```
 
 主要目录：
 
 ```text
-src/bilicourseai/          Python 源码
-src/bilicourseai/templates HTML 报告模板
-config/*.example.json      示例配置
+src/bilicourseai/           Python 源码
+src/bilicourseai/ai/        LLM 编排层：骨架、展开、分段、文本增强
+src/bilicourseai/outline/   知识树骨架相关提示词、窗口和节点归一化
+src/bilicourseai/visual/    截图候选选择、视觉分析和视觉流水线
+src/bilicourseai/reports/   report.json/report.html 写入、合并和选择
+src/bilicourseai/templates/ HTML 报告模板
+config/*.example.json       示例配置
 ```
 
-## 开源前注意
-
-发布前请确认不会提交：
-
-- `config/*.json` 里的真实 API key 或 Bilibili cookie
-- `data/` 下的报告、截图、字幕和分析结果
-- `.conda/`、`.venv/` 等本地环境
-- `_refs/` 下的第三方参考项目副本
-
-`.gitignore` 已默认忽略这些路径。
-
-## License
-
-尚未选择许可证。正式开源前请添加 `LICENSE` 文件。
+分层约定：`ai/` 只负责调用模型和编排流程；`outline/`、`visual/`、`reports/` 放对应领域的实现细节。CLI 和本地服务优先依赖这些包的公开出口，避免重新引入旧的平面模块。

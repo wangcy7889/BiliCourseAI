@@ -4,13 +4,14 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from bilicourseai.frames import capture_candidate_frames, capture_requested_frames, cleanup_candidate_frames
-from bilicourseai.llm import analyze_frames, choose_visual_frames
 from bilicourseai.models import KnowledgeBlock, VideoReport, VisualRequest
 from bilicourseai.settings import LLMSettings
+from bilicourseai.source import capture_candidate_frames, capture_requested_frames, cleanup_candidate_frames
+from bilicourseai.visual.llm import analyze_frames, choose_visual_frames
 
 
 ProgressCallback = Callable[[str], None]
+MAX_VISUAL_CHOICE_ROUNDS = 3
 
 
 def _walk_blocks(blocks: list[KnowledgeBlock]):
@@ -94,7 +95,13 @@ async def run_visual_pipeline(
     prefer_stream_frames: bool = True,
     request_delay: float = 0.0,
     progress: ProgressCallback | None = None,
+    max_choice_rounds: int = MAX_VISUAL_CHOICE_ROUNDS,
 ) -> dict[str, Any]:
+    if not isinstance(report, VideoReport):
+        raise TypeError(f"run_visual_pipeline expected VideoReport for report, got {type(report).__name__}")
+    if not isinstance(requests, list):
+        raise TypeError(f"run_visual_pipeline expected list for requests, got {type(requests).__name__}")
+
     frames_count = 0
     analyses_count = 0
     vision_skipped = False
@@ -106,40 +113,53 @@ async def run_visual_pipeline(
     elif requests:
         if progress:
             progress(f"Visual requests: {len(requests)}")
-        candidates = await capture_candidate_frames(
-            report,
-            requests,
-            output_dir,
-            prefer_stream=prefer_stream_frames,
-            report_dir=report_dir,
-        )
-        chosen_requests = await choose_visual_frames(
-            report,
-            settings,
-            requests,
-            candidates,
-            request_delay=request_delay,
-        )
-        retry_requests = [request for request in chosen_requests if request.candidate_timestamps]
-        if retry_requests:
+        chosen_requests: list[VisualRequest] = []
+        pending_requests = requests
+        max_choice_rounds = max(1, max_choice_rounds)
+        for round_index in range(1, max_choice_rounds + 1):
             if progress:
-                progress(f"Visual retries: {len(retry_requests)}")
-            stable_requests = [request for request in chosen_requests if not request.candidate_timestamps]
-            retry_candidates = await capture_candidate_frames(
+                progress(f"Visual candidate round {round_index}/{max_choice_rounds}: {len(pending_requests)} request(s)")
+            candidates = await capture_candidate_frames(
                 report,
-                retry_requests,
+                pending_requests,
                 output_dir,
                 prefer_stream=prefer_stream_frames,
                 report_dir=report_dir,
             )
-            chosen_requests = await choose_visual_frames(
+            round_choices = await choose_visual_frames(
                 report,
                 settings,
-                retry_requests,
-                retry_candidates,
+                pending_requests,
+                candidates,
                 request_delay=request_delay,
             )
-            chosen_requests = [*stable_requests, *chosen_requests]
+            retry_requests = [request for request in round_choices if request.candidate_timestamps]
+            stable_requests = [request for request in round_choices if not request.candidate_timestamps]
+            chosen_requests.extend(stable_requests)
+            if not retry_requests:
+                break
+            if round_index >= max_choice_rounds:
+                report.llm_notes.append(
+                    f"Visual frame choice stopped after {max_choice_rounds} round(s); "
+                    f"using {len(retry_requests)} latest retry request(s) as final timestamps."
+                )
+                chosen_requests.extend(
+                    VisualRequest(
+                        id=request.id,
+                        part_page=request.part_page,
+                        block_id=request.block_id,
+                        timestamp=request.timestamp,
+                        candidate_timestamps=[],
+                        reason=request.reason,
+                        prompt=request.prompt,
+                        section_id=request.section_id,
+                    )
+                    for request in retry_requests
+                )
+                break
+            if progress:
+                progress(f"Visual retries requested: {len(retry_requests)}")
+            pending_requests = retry_requests
 
         chosen_requests, duplicate_count = _merge_duplicate_final_visual_requests(report, chosen_requests)
         if progress and duplicate_count:

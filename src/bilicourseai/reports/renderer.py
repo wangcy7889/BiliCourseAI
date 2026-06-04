@@ -11,7 +11,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from bilicourseai.models import FrameArtifact, ReportArtifacts, VideoReport, VisualAnalysis
 from bilicourseai.paths import report_dir_for
-from bilicourseai.punctuation import readable_transcript_paragraphs
+from bilicourseai.transcripts.punctuation import readable_transcript_paragraphs
 
 
 TEMPLATE_RESOURCE = files("bilicourseai") / "templates"
@@ -140,17 +140,98 @@ def _md_inline(text: str) -> Markup:
     return Markup(html)
 
 
+def _repair_latex_control_escapes(text: str) -> str:
+    # Some LLM JSON payloads forget to double-escape LaTeX backslashes.
+    # JSON then turns commands such as \rightarrow into control chars.
+    replacements = {
+        "\r" + "ightarrow": r"\rightarrow",
+        "\r" + "angle": r"\rangle",
+        "\r" + "ho": r"\rho",
+        "\t" + "heta": r"\theta",
+        "\t" + "imes": r"\times",
+        "\t" + "o": r"\to",
+        "\b" + "ar": r"\bar",
+        "\f" + "rac": r"\frac",
+        "\n" + "abla": r"\nabla",
+    }
+    for broken, fixed in replacements.items():
+        text = text.replace(broken, fixed)
+    return text
+
+
+def _simplify_standalone_latex_symbols(text: str) -> str:
+    text = re.sub(r"\$\\(?:right)?arrow\$", "→", text)
+    text = re.sub(r"\$\\to\$", "→", text)
+    return text
+
+
 def _md_html(text: str) -> Markup:
-    text = (text or "").strip()
+    text = _simplify_standalone_latex_symbols(_repair_latex_control_escapes(text or "")).strip()
     if not text:
         return Markup("")
 
     normalized = text.replace("\r\n", "\n").replace("\r", "\n")
-    normalized = re.sub(
-        r"(?m)(^|[\s：:；;。！？!?])(\d{1,2}[.．、](?!\d))\s*(?=\S)",
-        lambda match: f"{match.group(1).rstrip()}\n{match.group(2)} ",
-        normalized,
-    )
+
+    def split_inline_ordered_lists(value: str) -> str:
+        fixed_lines: list[str] = []
+        for source_line in value.splitlines():
+            if re.match(r"^\s*#{1,6}\s+\d{1,2}[.．、](?!\d)", source_line):
+                fixed_lines.append(source_line)
+                continue
+            if re.match(r"^\s*\d{1,2}[.．、](?!\d)\s+", source_line):
+                fixed_lines.append(source_line)
+                continue
+            fixed_lines.append(
+                re.sub(
+                    r"(^|[\s：:；;。！？!?])(\d{1,2}[.．、](?!\d))\s*(?=\S)",
+                    lambda match: (
+                        f"{match.group(2)} "
+                        if match.group(1) == ""
+                        else f"{match.group(1).rstrip()}\n{match.group(2)} "
+                    ),
+                    source_line,
+                )
+            )
+        return "\n".join(fixed_lines)
+
+    normalized = split_inline_ordered_lists(normalized)
+    def table_cells(value: str) -> list[str]:
+        stripped = value.strip().strip("|")
+        return [cell.strip() for cell in stripped.split("|")]
+
+    def is_table_separator(value: str) -> bool:
+        cells = table_cells(value)
+        return bool(cells) and all(re.fullmatch(r":?-{3,}:?", cell.strip()) for cell in cells)
+
+    def expand_compact_table_line(value: str) -> list[str]:
+        line = value.strip()
+        if not (
+            line.startswith("|")
+            and line.endswith("|")
+            and re.search(r"\|\s*:?-{3,}:?\s*\|", line)
+            and re.search(r"\|\s+\|", line)
+        ):
+            return [value]
+
+        rows: list[str] = []
+        for piece in re.split(r"\|\s+\|", line):
+            piece = piece.strip()
+            if not piece:
+                continue
+            if not piece.startswith("|"):
+                piece = "| " + piece
+            if not piece.endswith("|"):
+                piece = piece + " |"
+            rows.append(piece)
+
+        if len(rows) >= 2 and is_table_separator(rows[1]):
+            return rows
+        return [value]
+
+    expanded_lines: list[str] = []
+    for raw_line in normalized.splitlines():
+        expanded_lines.extend(expand_compact_table_line(raw_line))
+    normalized = "\n".join(expanded_lines)
     lines = normalized.splitlines()
     html: list[str] = []
     list_stack: list[str] = []
@@ -188,7 +269,48 @@ def _md_html(text: str) -> Markup:
             )
         )
 
-    for raw_line in lines:
+    def is_table_row(value: str) -> bool:
+        return value.startswith("|") and value.endswith("|") and len(table_cells(value)) >= 2
+
+    def render_table(start_index: int) -> int:
+        header = table_cells(lines[start_index].strip())
+        separator = table_cells(lines[start_index + 1].strip())
+        alignments = []
+        for cell in separator:
+            align = ""
+            if cell.startswith(":") and cell.endswith(":"):
+                align = ' style="text-align:center"'
+            elif cell.endswith(":"):
+                align = ' style="text-align:right"'
+            alignments.append(align)
+
+        html.append("<table>")
+        html.append("<thead><tr>")
+        for index, cell in enumerate(header):
+            align = alignments[index] if index < len(alignments) else ""
+            html.append(f"<th{align}>{format_inline(cell)}</th>")
+        html.append("</tr></thead>")
+        html.append("<tbody>")
+
+        index = start_index + 2
+        while index < len(lines):
+            row_line = lines[index].strip()
+            if not is_table_row(row_line):
+                break
+            html.append("<tr>")
+            for cell_index, cell in enumerate(table_cells(row_line)):
+                align = alignments[cell_index] if cell_index < len(alignments) else ""
+                html.append(f"<td{align}>{format_inline(cell)}</td>")
+            html.append("</tr>")
+            index += 1
+
+        html.append("</tbody>")
+        html.append("</table>")
+        return index
+
+    line_index = 0
+    while line_index < len(lines):
+        raw_line = lines[line_index]
         line = raw_line.strip()
         if line.startswith("```"):
             if in_code:
@@ -200,14 +322,17 @@ def _md_html(text: str) -> Markup:
                 flush_paragraph()
                 close_lists()
                 in_code = True
+            line_index += 1
             continue
         if in_code:
             code_lines.append(raw_line)
+            line_index += 1
             continue
 
         if not line:
             flush_paragraph()
             close_lists()
+            line_index += 1
             continue
 
         heading = re.match(r"^(#{1,4})\s+(.+)$", line)
@@ -216,6 +341,25 @@ def _md_html(text: str) -> Markup:
             close_lists()
             level = min(6, len(heading.group(1)) + 2)
             html.append(f"<h{level}>{_md_inline(heading.group(2))}</h{level}>")
+            line_index += 1
+            continue
+
+        quote = re.match(r"^>\s*(.+)$", line)
+        if quote:
+            flush_paragraph()
+            close_lists()
+            html.append(f"<blockquote><p>{format_inline(quote.group(1))}</p></blockquote>")
+            line_index += 1
+            continue
+
+        if (
+            line_index + 1 < len(lines)
+            and is_table_row(line)
+            and is_table_separator(lines[line_index + 1].strip())
+        ):
+            flush_paragraph()
+            close_lists()
+            line_index = render_table(line_index)
             continue
 
         ordered = re.match(r"^(\d+)[.．、](?!\d)\s*(.+)$", line)
@@ -223,15 +367,18 @@ def _md_html(text: str) -> Markup:
         if ordered:
             ensure_list("ol")
             html.append(f"<li>{format_inline(ordered.group(2))}</li>")
+            line_index += 1
             continue
         if unordered:
             ensure_list("ul")
             html.append(f"<li>{format_inline(unordered.group(1))}</li>")
+            line_index += 1
             continue
 
         if list_stack:
             close_lists()
         paragraph.append(line)
+        line_index += 1
 
     if in_code:
         code_text = "\n".join(code_lines)

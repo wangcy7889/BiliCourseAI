@@ -9,13 +9,13 @@ from typing import Any
 
 from aiohttp import web
 
-from bilicourseai.llm import expand_block
+from bilicourseai.ai import expand_block
 from bilicourseai.models import KnowledgeBlock, VideoReport
 from bilicourseai.paths import output_dir_for_report_dir
-from bilicourseai.report import write_report_to_dir
+from bilicourseai.reports import write_report_to_dir
 from bilicourseai.settings import DEFAULT_DATA_DIR, LLMSettings, load_llm_settings
 from bilicourseai.tree import find_block
-from bilicourseai.visual_pipeline import run_visual_pipeline
+from bilicourseai.visual import run_visual_pipeline
 
 
 def _log(message: str) -> None:

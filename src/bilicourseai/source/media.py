@@ -10,9 +10,9 @@ import imageio_ffmpeg
 from PIL import Image
 from bilibili_api import video
 
-from bilicourseai.auth import build_credential
 from bilicourseai.models import FrameArtifact, VideoReport, VisualRequest
 from bilicourseai.paths import report_dir_for
+from bilicourseai.source.auth import build_credential
 from bilicourseai.tree import find_block
 
 

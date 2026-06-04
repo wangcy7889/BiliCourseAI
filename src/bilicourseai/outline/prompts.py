@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from bilicourseai.boundary_review import boundary_review_payload, boundary_review_payload_for_blocks
-from bilicourseai.node_quality import MAX_LEAF_SECONDS
-from bilicourseai.transcript_utils import transcript_prompt_payload
+from bilicourseai.outline.boundaries import boundary_review_payload, boundary_review_payload_for_blocks
+from bilicourseai.outline.quality import MAX_LEAF_SECONDS
+from bilicourseai.transcripts.transcript import transcript_prompt_payload
 
 
 GLOBAL_PLAN_MAX_CHARS = 56000
@@ -196,6 +196,8 @@ def outline_whole_part_prompt(report, part, guidance: dict[str, int]) -> dict[st
             "Create more nodes when the lesson contains many distinct concepts, grammar rules, algorithms, examples, or phases.",
             "Create fewer nodes when the lesson is a single coherent explanation.",
             "Each node should represent a complete learning topic, not merely a processing chunk or one tiny operation.",
+            "Avoid standalone nodes shorter than 75 seconds unless the node is a complete example/problem, formula derivation/proof, full procedure/algorithm, or independent exercise.",
+            "When adjacent short items are only a list of terms, principles, model types, rules, or comparison dimensions, merge them into one coherent node.",
             "The returned nodes should cover the full part timeline from start to end with no large unexplained gaps.",
             "If a time range is transitional or setup, merge it into the nearest meaningful node instead of omitting it.",
             "Use node_type='branch' unless the node is already narrow and self-contained.",
@@ -349,6 +351,8 @@ def reduce_part_outline_prompt(
             "Create as many nodes as the actual course structure needs within the guidance range.",
             "If the part is long and dense, it is better to return 8-14 coherent nodes than to squeeze unrelated topics together.",
             "Each node should cover a complete learning phase, not merely one code line or one API call.",
+            "Avoid standalone nodes shorter than 75 seconds unless the node is a complete example/problem, formula derivation/proof, full procedure/algorithm, or independent exercise.",
+            "When adjacent short items are only a list of terms, principles, model types, rules, or comparison dimensions, merge them into one coherent node.",
             "The returned nodes should cover the full part timeline from start to end with no large unexplained gaps.",
             "If a time range is transitional or setup, merge it into the nearest meaningful node instead of omitting it.",
             "Use original timestamps spanning the merged candidate range.",

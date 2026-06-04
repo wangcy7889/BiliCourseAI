@@ -8,8 +8,8 @@ from typing import Any
 import aiohttp
 from bilibili_api import video
 
-from bilicourseai.auth import build_credential
 from bilicourseai.models import SubtitleTrack, TranscriptLine, VideoPart, VideoReport
+from bilicourseai.source.auth import build_credential
 
 
 BVID_RE = re.compile(r"(BV[0-9A-Za-z]{10,})")
@@ -130,6 +130,7 @@ async def _with_timeout(coro, label: str, timeout_seconds: int = 45):
 async def fetch_video_report(
     source: str,
     prefer_ai_subtitle: bool = True,
+    part_page: int | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> VideoReport:
     def emit(message: str) -> None:
@@ -147,7 +148,14 @@ async def fetch_video_report(
     emit(f"Pages: {len(pages)}")
 
     parts: list[VideoPart] = []
-    for page in pages:
+    selected_pages = pages
+    if part_page is not None:
+        selected_pages = [page for page in pages if int(page.get("page", 0)) == part_page]
+        if not selected_pages:
+            raise ValueError(f"视频没有 P{part_page}")
+        emit(f"Selected P{part_page}: fetching subtitles only for this part")
+
+    for page in selected_pages:
         cid = int(page["cid"])
         page_no = int(page.get("page", len(parts) + 1))
         title = str(page.get("part") or page.get("title") or f"P{len(parts) + 1}")

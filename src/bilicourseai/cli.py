@@ -7,23 +7,20 @@ from pathlib import Path
 
 import typer
 
-from bilicourseai.auth import check_bilibili_credential, poll_qr_login, start_qr_login
-from bilicourseai.bilibili import fetch_video_report
-from bilicourseai.frames import capture_requested_frames
-from bilicourseai.llm import (
+from bilicourseai.ai import (
     ai_segment_report,
-    analyze_frames,
     enrich_report_text,
     expand_block,
     outline_report,
-    rewrite_visual_notes,
 )
 from bilicourseai.models import VideoReport
-from bilicourseai.punctuation import punctuate_lines
 from bilicourseai.paths import report_dir_for, report_dir_from_json
-from bilicourseai.question_tree import build_question_part_tree
-from bilicourseai.report import write_report, write_report_to_dir
-from bilicourseai.segment import segment_report_parts
+from bilicourseai.reports import (
+    merge_fetched_report,
+    resolve_report_dir,
+    write_report,
+    write_report_to_dir,
+)
 from bilicourseai.server import run_report_server
 from bilicourseai.settings import (
     BILIBILI_CREDENTIAL_FILE,
@@ -40,7 +37,15 @@ from bilicourseai.settings import (
     save_bilibili_credential_settings,
     save_llm_settings,
 )
-from bilicourseai.visual_pipeline import run_visual_pipeline
+from bilicourseai.source import (
+    capture_requested_frames,
+    check_bilibili_credential,
+    fetch_video_report,
+    poll_qr_login,
+    start_qr_login,
+)
+from bilicourseai.transcripts import build_question_part_tree, punctuate_lines, segment_report_parts
+from bilicourseai.visual import analyze_frames, rewrite_visual_notes, run_visual_pipeline
 
 
 app = typer.Typer(no_args_is_help=True)
@@ -264,26 +269,6 @@ def _require_llm_settings(need_vision: bool = False):
     return settings
 
 
-def _merge_fetched_report(existing: VideoReport, fetched: VideoReport, part_page: int | None) -> VideoReport:
-    existing.aid = fetched.aid
-    existing.title = fetched.title
-    existing.owner_name = fetched.owner_name
-    existing.source_url = fetched.source_url
-
-    existing_by_page = {part.page: part for part in existing.parts}
-    merged_parts = []
-    for fetched_part in fetched.parts:
-        old_part = existing_by_page.get(fetched_part.page)
-        if old_part is not None and (part_page is None or fetched_part.page != part_page):
-            merged_parts.append(old_part)
-            continue
-        if old_part is not None and part_page == fetched_part.page:
-            fetched_part.blocks = old_part.blocks
-        merged_parts.append(fetched_part)
-    existing.parts = merged_parts
-    return existing
-
-
 @app.command()
 def outline(
     source: str = typer.Argument(..., help="Bilibili 视频 URL 或 BVID"),
@@ -325,12 +310,13 @@ def outline(
         fetched_report = await fetch_video_report(
             source,
             prefer_ai_subtitle=prefer_ai_subtitle,
+            part_page=part_page,
             progress=_progress,
         )
         existing_json = report_dir_for(fetched_report, output_dir) / "report.json"
         if existing_json.exists():
             report = VideoReport.model_validate(json.loads(existing_json.read_text(encoding="utf-8")))
-            report = _merge_fetched_report(report, fetched_report, part_page=part_page)
+            report = merge_fetched_report(report, fetched_report, part_page=part_page)
             typer.echo(f"Loaded existing report: {existing_json}")
         else:
             report = fetched_report
@@ -623,7 +609,7 @@ def rewrite_visual_notes_command(
 
 @app.command()
 def serve(
-    report_dir: Path = typer.Argument(..., help="报告目录，里面应包含 report.json 和 report.html"),
+    report_dir: Path = typer.Argument(..., help="报告目录、report.json、BVID，或报告目录名的一段唯一关键词"),
     host: str = typer.Option("127.0.0.1", "--host", help="本地服务监听地址"),
     port: int = typer.Option(8765, "--port", help="本地服务端口"),
     output_dir: Path | None = typer.Option(None, "--output-dir", "-o", help="数据输出目录；默认根据报告目录推断"),
@@ -637,7 +623,8 @@ def serve(
 ) -> None:
     """Serve one report directory with local expand/redo actions."""
 
-    if not report_dir.exists() or not report_dir.is_dir():
+    report_dir = resolve_report_dir(report_dir, output_dir or DEFAULT_DATA_DIR)
+    if not report_dir.is_dir():
         raise typer.BadParameter(f"报告目录不存在: {report_dir}")
     if not (report_dir / "report.json").exists():
         raise typer.BadParameter(f"report.json 不存在: {report_dir / 'report.json'}")

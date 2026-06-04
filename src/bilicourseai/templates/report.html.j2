@@ -260,6 +260,39 @@
       background: var(--accent);
       color: #f8fbfa;
     }
+    .summary table,
+    .note-section-body table,
+    .visual-note-body table {
+      width: 100%;
+      margin: 10px 0 12px;
+      border-collapse: collapse;
+      border: 1px solid var(--line);
+      background: color-mix(in srgb, white, var(--soft-panel) 28%);
+      font-size: 14px;
+      line-height: 1.55;
+      display: block;
+      overflow-x: auto;
+    }
+    .summary th,
+    .summary td,
+    .note-section-body th,
+    .note-section-body td,
+    .visual-note-body th,
+    .visual-note-body td {
+      min-width: 96px;
+      padding: 7px 9px;
+      border: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
+    }
+    .summary th,
+    .note-section-body th,
+    .visual-note-body th {
+      color: var(--accent);
+      background: color-mix(in srgb, var(--mint), white 70%);
+      font-weight: 700;
+      white-space: nowrap;
+    }
     .summary h4,
     .summary h5,
     .summary h6 {

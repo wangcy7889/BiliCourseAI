@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from bilicourseai.models import KnowledgeBlock, TranscriptLine, VideoPart
-from bilicourseai.punctuation import punctuate_lines
+from bilicourseai.transcripts.punctuation import punctuate_lines
 
 
 def _compact_summary(lines: list[TranscriptLine], max_chars: int = 160) -> str:
