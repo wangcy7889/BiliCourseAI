@@ -108,7 +108,7 @@ def _protect_spans(text: str) -> tuple[str, list[tuple[str, str]]]:
         return f"\u0000SPAN{len(spans) - 1}\u0000"
 
     math_pattern = re.compile(
-        r"(\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$\$[\s\S]*?\$\$|(?<!\$)\$(?!\$)[\s\S]+?(?<!\$)\$(?!\$))"
+        r"(\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$\$[\s\S]*?\$\$|(?<![\w$])\$(?![\s$])[^$\n]+?(?<![\s$])\$(?![\w$]))"
     )
     text = math_pattern.sub(lambda match: store("math", match.group(0)), text)
     text = re.sub(r"`([^`\n]+)`", lambda match: store("code", match.group(1)), text)
@@ -159,6 +159,38 @@ def _repair_latex_control_escapes(text: str) -> str:
     return text
 
 
+def _escape_unmatched_math_dollars(text: str) -> str:
+    result: list[str] = []
+    index = 0
+    in_inline_math = False
+    while index < len(text):
+        char = text[index]
+        if char != "$":
+            result.append(char)
+            index += 1
+            continue
+        if index + 1 < len(text) and text[index + 1] == "$":
+            result.append("$$")
+            index += 2
+            continue
+        previous_char = text[index - 1] if index else ""
+        next_char = text[index + 1] if index + 1 < len(text) else ""
+        can_open = not in_inline_math and next_char and not next_char.isspace() and previous_char not in "$\\"
+        can_close = in_inline_math and previous_char and not previous_char.isspace() and next_char not in "$"
+        if can_open or can_close:
+            in_inline_math = not in_inline_math
+            result.append("$")
+        else:
+            result.append("")
+        index += 1
+    if in_inline_math:
+        for reverse_index in range(len(result) - 1, -1, -1):
+            if result[reverse_index] == "$":
+                result[reverse_index] = ""
+                break
+    return "".join(result)
+
+
 def _simplify_standalone_latex_symbols(text: str) -> str:
     text = re.sub(r"\$\\(?:right)?arrow\$", "→", text)
     text = re.sub(r"\$\\to\$", "→", text)
@@ -166,7 +198,9 @@ def _simplify_standalone_latex_symbols(text: str) -> str:
 
 
 def _md_html(text: str) -> Markup:
-    text = _simplify_standalone_latex_symbols(_repair_latex_control_escapes(text or "")).strip()
+    text = _escape_unmatched_math_dollars(
+        _simplify_standalone_latex_symbols(_repair_latex_control_escapes(text or ""))
+    ).strip()
     if not text:
         return Markup("")
 

@@ -184,8 +184,12 @@ app.add_typer(auth_app, name="auth")
 def config_llm(
     base_url: str | None = typer.Option(None, "--base-url", help="OpenAI-compatible API base URL"),
     api_key: str | None = typer.Option(None, "--api-key", help="OpenAI-compatible API key"),
-    text_model: str = typer.Option(DEFAULT_TEXT_MODEL, "--text-model", help="默认文本模型名"),
-    vision_model: str = typer.Option(DEFAULT_VISION_MODEL, "--vision-model", help="默认视觉模型名"),
+    text_base_url: str | None = typer.Option(None, "--text-base-url", help="文本模型 API base URL；默认回退到 --base-url"),
+    text_api_key: str | None = typer.Option(None, "--text-api-key", help="文本模型 API key；默认回退到 --api-key"),
+    vision_base_url: str | None = typer.Option(None, "--vision-base-url", help="视觉模型 API base URL；默认回退到 --base-url"),
+    vision_api_key: str | None = typer.Option(None, "--vision-api-key", help="视觉模型 API key；默认回退到 --api-key"),
+    text_model: str | None = typer.Option(None, "--text-model", help="默认文本模型名"),
+    vision_model: str | None = typer.Option(None, "--vision-model", help="默认视觉模型名"),
     enable_thinking: bool = typer.Option(
         False,
         "--enable-thinking/--disable-thinking",
@@ -194,23 +198,64 @@ def config_llm(
 ) -> None:
     """Save default LLM settings to the BiliCourseAI config directory."""
 
-    if base_url is None:
+    current = load_llm_settings()
+    if (
+        base_url is None
+        and text_base_url is None
+        and vision_base_url is None
+        and not current.effective_text_base_url
+        and not current.effective_vision_base_url
+    ):
         base_url = typer.prompt("base_url")
-    if api_key is None:
+    if (
+        api_key is None
+        and text_api_key is None
+        and vision_api_key is None
+        and not current.effective_text_api_key
+        and not current.effective_vision_api_key
+    ):
         api_key = typer.prompt("api_key", hide_input=True)
+    base_url_value = base_url if base_url is not None else current.base_url
+    api_key_value = api_key if api_key is not None else current.api_key
+    text_base_url_value = (
+        text_base_url
+        if text_base_url is not None
+        else (base_url if base_url is not None else current.effective_text_base_url)
+    )
+    text_api_key_value = (
+        text_api_key
+        if text_api_key is not None
+        else (api_key if api_key is not None else current.effective_text_api_key)
+    )
+    vision_base_url_value = (
+        vision_base_url
+        if vision_base_url is not None
+        else (base_url if base_url is not None else current.effective_vision_base_url)
+    )
+    vision_api_key_value = (
+        vision_api_key
+        if vision_api_key is not None
+        else (api_key if api_key is not None else current.effective_vision_api_key)
+    )
 
     path = save_llm_settings(
         LLMSettings(
-            base_url=base_url,
-            api_key=api_key,
-            text_model=text_model,
-            vision_model=vision_model,
+            base_url=base_url_value,
+            api_key=api_key_value,
+            text_base_url=text_base_url_value,
+            text_api_key=text_api_key_value,
+            vision_base_url=vision_base_url_value,
+            vision_api_key=vision_api_key_value,
+            text_model=text_model or current.text_model or DEFAULT_TEXT_MODEL,
+            vision_model=vision_model or current.vision_model or DEFAULT_VISION_MODEL,
             enable_thinking=enable_thinking,
         )
     )
     typer.echo(f"Saved: {path}")
-    typer.echo(f"Text model: {text_model}")
-    typer.echo(f"Vision model: {vision_model}")
+    typer.echo(f"Text model: {text_model or current.text_model or DEFAULT_TEXT_MODEL}")
+    typer.echo(f"Text base_url: {text_base_url_value or '未设置'}")
+    typer.echo(f"Vision model: {vision_model or current.vision_model or DEFAULT_VISION_MODEL}")
+    typer.echo(f"Vision base_url: {vision_base_url_value or '未设置'}")
 
 
 @config_app.command("status")
@@ -221,7 +266,11 @@ def config_status() -> None:
     typer.echo(f"LLM config file: {LLM_SETTINGS_FILE}")
     typer.echo(f"base_url: {settings.base_url or '未设置'}")
     typer.echo(f"api_key: {_mask(settings.api_key)}")
+    typer.echo(f"text_base_url: {settings.effective_text_base_url or '未设置'}")
+    typer.echo(f"text_api_key: {_mask(settings.effective_text_api_key)}")
     typer.echo(f"text_model: {settings.text_model or '未设置'}")
+    typer.echo(f"vision_base_url: {settings.effective_vision_base_url or '未设置'}")
+    typer.echo(f"vision_api_key: {_mask(settings.effective_vision_api_key)}")
     typer.echo(f"vision_model: {settings.vision_model or '未设置'}")
     typer.echo(f"enable_thinking: {settings.enable_thinking}")
 
@@ -243,11 +292,23 @@ def _apply_llm_overrides(
     text_model: str | None,
     vision_model: str | None = None,
     enable_thinking: bool = False,
+    text_base_url: str | None = None,
+    text_api_key: str | None = None,
+    vision_base_url: str | None = None,
+    vision_api_key: str | None = None,
 ) -> None:
     if base_url:
         os.environ["BILICOURSE_BASE_URL"] = base_url
     if api_key:
         os.environ["BILICOURSE_API_KEY"] = api_key
+    if text_base_url:
+        os.environ["BILICOURSE_TEXT_BASE_URL"] = text_base_url
+    if text_api_key:
+        os.environ["BILICOURSE_TEXT_API_KEY"] = text_api_key
+    if vision_base_url:
+        os.environ["BILICOURSE_VISION_BASE_URL"] = vision_base_url
+    if vision_api_key:
+        os.environ["BILICOURSE_VISION_API_KEY"] = vision_api_key
     if text_model:
         os.environ["BILICOURSE_TEXT_MODEL"] = text_model
     if vision_model:
@@ -260,12 +321,14 @@ def _apply_llm_overrides(
 
 def _require_llm_settings(need_vision: bool = False):
     settings = load_llm_settings()
-    if not settings.base_url or not settings.api_key or not settings.text_model:
+    if not settings.effective_text_base_url or not settings.effective_text_api_key or not settings.text_model:
         raise typer.BadParameter(
             "需要先运行 `bilicourse config llm`，或传入 --base-url/--api-key/--text-model"
         )
-    if need_vision and not settings.vision_model:
-        raise typer.BadParameter("需要配置 vision_model")
+    if need_vision and (
+        not settings.effective_vision_base_url or not settings.effective_vision_api_key or not settings.vision_model
+    ):
+        raise typer.BadParameter("需要配置 vision_model 以及视觉模型 base_url/api_key")
     return settings
 
 
@@ -297,6 +360,8 @@ def outline(
     max_outline_windows: int = typer.Option(0, "--max-outline-windows", help="最多处理多少个骨架窗口，0 表示不限"),
     base_url: str | None = typer.Option(None, "--base-url", help="OpenAI-compatible API base URL"),
     api_key: str | None = typer.Option(None, "--api-key", help="OpenAI-compatible API key"),
+    text_base_url: str | None = typer.Option(None, "--text-base-url", help="文本模型 API base URL"),
+    text_api_key: str | None = typer.Option(None, "--text-api-key", help="文本模型 API key"),
     text_model: str | None = typer.Option(None, "--text-model", help="文本模型名"),
     llm_request_delay: float = typer.Option(2.2, "--llm-request-delay", help="模型请求间隔秒数"),
     enable_thinking: bool = typer.Option(False, "--enable-thinking/--disable-thinking", help="是否开启 thinking"),
@@ -304,7 +369,15 @@ def outline(
     """Generate only a coarse expandable outline, without screenshots or vision analysis."""
 
     async def run() -> None:
-        _apply_llm_overrides(base_url, api_key, text_model, None, enable_thinking)
+        _apply_llm_overrides(
+            base_url,
+            api_key,
+            text_model,
+            None,
+            enable_thinking,
+            text_base_url=text_base_url,
+            text_api_key=text_api_key,
+        )
         settings = _require_llm_settings()
         typer.echo("Mode: outline skeleton")
         fetched_report = await fetch_video_report(
@@ -391,7 +464,7 @@ def expand(
     report_json: Path = typer.Argument(..., help="已有 report.json 路径"),
     block_id: str = typer.Option(..., "--block-id", help="要展开的节点 ID"),
     output_dir: Path | None = typer.Option(None, "--output-dir", "-o", help="数据输出目录；默认写回 report.json 所在目录"),
-    max_visual_requests: int = typer.Option(3, "--max-visual-requests", help="展开成叶子时最多请求的图片数"),
+    max_visual_requests: int = typer.Option(4, "--max-visual-requests", help="展开成叶子时最多请求的图片数"),
     prefer_stream_frames: bool = typer.Option(
         True,
         "--prefer-stream-frames/--prefer-storyboard-frames",
@@ -399,6 +472,10 @@ def expand(
     ),
     base_url: str | None = typer.Option(None, "--base-url", help="OpenAI-compatible API base URL"),
     api_key: str | None = typer.Option(None, "--api-key", help="OpenAI-compatible API key"),
+    text_base_url: str | None = typer.Option(None, "--text-base-url", help="文本模型 API base URL"),
+    text_api_key: str | None = typer.Option(None, "--text-api-key", help="文本模型 API key"),
+    vision_base_url: str | None = typer.Option(None, "--vision-base-url", help="视觉模型 API base URL"),
+    vision_api_key: str | None = typer.Option(None, "--vision-api-key", help="视觉模型 API key"),
     text_model: str | None = typer.Option(None, "--text-model", help="文本模型名"),
     vision_model: str | None = typer.Option(None, "--vision-model", help="视觉模型名"),
     llm_request_delay: float = typer.Option(2.2, "--llm-request-delay", help="模型请求间隔秒数"),
@@ -407,7 +484,17 @@ def expand(
     """Expand one selected outline node into child nodes or a leaf note."""
 
     async def run() -> None:
-        _apply_llm_overrides(base_url, api_key, text_model, vision_model, enable_thinking)
+        _apply_llm_overrides(
+            base_url,
+            api_key,
+            text_model,
+            vision_model,
+            enable_thinking,
+            text_base_url=text_base_url,
+            text_api_key=text_api_key,
+            vision_base_url=vision_base_url,
+            vision_api_key=vision_api_key,
+        )
         settings = _require_llm_settings()
         if not report_json.exists():
             raise typer.BadParameter(f"report.json 不存在: {report_json}")
@@ -456,6 +543,10 @@ def analyze(
     ai_segment: bool = typer.Option(False, "--ai-segment", help="让 AI 根据字幕重新分段并过滤无用口播信息"),
     base_url: str | None = typer.Option(None, "--base-url", help="OpenAI-compatible API base URL"),
     api_key: str | None = typer.Option(None, "--api-key", help="OpenAI-compatible API key"),
+    text_base_url: str | None = typer.Option(None, "--text-base-url", help="文本模型 API base URL"),
+    text_api_key: str | None = typer.Option(None, "--text-api-key", help="文本模型 API key"),
+    vision_base_url: str | None = typer.Option(None, "--vision-base-url", help="视觉模型 API base URL"),
+    vision_api_key: str | None = typer.Option(None, "--vision-api-key", help="视觉模型 API key"),
     text_model: str | None = typer.Option(None, "--text-model", help="文本模型名"),
     vision_model: str | None = typer.Option(None, "--vision-model", help="视觉模型名"),
     max_llm_blocks: int = typer.Option(0, "--max-llm-blocks", help="本次交给文本模型处理的 block 上限，0 表示全部"),
@@ -481,24 +572,27 @@ def analyze(
     """Generate a local study report from Bilibili metadata, subtitles, and optional LLM vision."""
 
     async def run() -> None:
-        if base_url:
-            os.environ["BILICOURSE_BASE_URL"] = base_url
-        if api_key:
-            os.environ["BILICOURSE_API_KEY"] = api_key
-        if text_model:
-            os.environ["BILICOURSE_TEXT_MODEL"] = text_model
-        if vision_model:
-            os.environ["BILICOURSE_VISION_MODEL"] = vision_model
-        if enable_thinking:
-            os.environ["BILICOURSE_ENABLE_THINKING"] = "true"
-        else:
-            os.environ.pop("BILICOURSE_ENABLE_THINKING", None)
+        _apply_llm_overrides(
+            base_url,
+            api_key,
+            text_model,
+            vision_model,
+            enable_thinking,
+            text_base_url=text_base_url,
+            text_api_key=text_api_key,
+            vision_base_url=vision_base_url,
+            vision_api_key=vision_api_key,
+        )
 
         llm_settings = load_llm_settings()
         if ai_segment and not use_llm:
             raise typer.BadParameter("--ai-segment 需要同时使用 --use-llm")
         if use_llm:
-            if not llm_settings.base_url or not llm_settings.api_key or not llm_settings.text_model:
+            if (
+                not llm_settings.effective_text_base_url
+                or not llm_settings.effective_text_api_key
+                or not llm_settings.text_model
+            ):
                 raise typer.BadParameter(
                     "--use-llm 需要 --base-url/--api-key/--text-model "
                     "或环境变量 BILICOURSE_BASE_URL/BILICOURSE_API_KEY/BILICOURSE_TEXT_MODEL"
@@ -562,6 +656,8 @@ def rewrite_visual_notes_command(
     output_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--output-dir", "-o", help="数据输出目录"),
     base_url: str | None = typer.Option(None, "--base-url", help="OpenAI-compatible API base URL"),
     api_key: str | None = typer.Option(None, "--api-key", help="OpenAI-compatible API key"),
+    text_base_url: str | None = typer.Option(None, "--text-base-url", help="文本模型 API base URL"),
+    text_api_key: str | None = typer.Option(None, "--text-api-key", help="文本模型 API key"),
     text_model: str | None = typer.Option(None, "--text-model", help="文本模型名"),
     llm_request_delay: float = typer.Option(
         2.2,
@@ -577,19 +673,22 @@ def rewrite_visual_notes_command(
     """Rewrite existing visual analyses into concise Chinese study notes."""
 
     async def run() -> None:
-        if base_url:
-            os.environ["BILICOURSE_BASE_URL"] = base_url
-        if api_key:
-            os.environ["BILICOURSE_API_KEY"] = api_key
-        if text_model:
-            os.environ["BILICOURSE_TEXT_MODEL"] = text_model
-        if enable_thinking:
-            os.environ["BILICOURSE_ENABLE_THINKING"] = "true"
-        else:
-            os.environ.pop("BILICOURSE_ENABLE_THINKING", None)
+        _apply_llm_overrides(
+            base_url,
+            api_key,
+            text_model,
+            None,
+            enable_thinking,
+            text_base_url=text_base_url,
+            text_api_key=text_api_key,
+        )
 
         llm_settings = load_llm_settings()
-        if not llm_settings.base_url or not llm_settings.api_key or not llm_settings.text_model:
+        if (
+            not llm_settings.effective_text_base_url
+            or not llm_settings.effective_text_api_key
+            or not llm_settings.text_model
+        ):
             raise typer.BadParameter(
                 "需要 --base-url/--api-key/--text-model "
                 "或环境变量 BILICOURSE_BASE_URL/BILICOURSE_API_KEY/BILICOURSE_TEXT_MODEL"
@@ -613,7 +712,7 @@ def serve(
     host: str = typer.Option("127.0.0.1", "--host", help="本地服务监听地址"),
     port: int = typer.Option(8765, "--port", help="本地服务端口"),
     output_dir: Path | None = typer.Option(None, "--output-dir", "-o", help="数据输出目录；默认根据报告目录推断"),
-    max_visual_requests: int = typer.Option(2, "--max-visual-requests", help="交互展开时最多请求的图片数"),
+    max_visual_requests: int = typer.Option(4, "--max-visual-requests", help="交互展开时最多请求的图片数"),
     prefer_stream_frames: bool = typer.Option(
         True,
         "--prefer-stream-frames/--prefer-storyboard-frames",

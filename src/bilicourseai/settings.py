@@ -53,9 +53,29 @@ DEFAULT_VISION_MODEL = "Ali-dashscope/Qwen3.5-Plus"
 class LLMSettings:
     base_url: str | None
     api_key: str | None
+    text_base_url: str | None
+    text_api_key: str | None
+    vision_base_url: str | None
+    vision_api_key: str | None
     text_model: str | None
     vision_model: str | None
     enable_thinking: bool = False
+
+    @property
+    def effective_text_base_url(self) -> str | None:
+        return self.text_base_url or self.base_url
+
+    @property
+    def effective_text_api_key(self) -> str | None:
+        return self.text_api_key or self.api_key
+
+    @property
+    def effective_vision_base_url(self) -> str | None:
+        return self.vision_base_url or self.base_url
+
+    @property
+    def effective_vision_api_key(self) -> str | None:
+        return self.vision_api_key or self.api_key
 
 
 @dataclass(frozen=True)
@@ -113,9 +133,23 @@ def _file_bool(value: str | None) -> bool | None:
 def load_llm_settings() -> LLMSettings:
     file_values = _load_llm_settings_file()
     enable_thinking_env = _env_bool("BILICOURSE_ENABLE_THINKING")
+    base_url = _nonempty(os.getenv("BILICOURSE_BASE_URL")) or _nonempty(file_values.get("base_url"))
+    api_key = _nonempty(os.getenv("BILICOURSE_API_KEY")) or _nonempty(file_values.get("api_key"))
     return LLMSettings(
-        base_url=_nonempty(os.getenv("BILICOURSE_BASE_URL")) or _nonempty(file_values.get("base_url")),
-        api_key=_nonempty(os.getenv("BILICOURSE_API_KEY")) or _nonempty(file_values.get("api_key")),
+        base_url=base_url,
+        api_key=api_key,
+        text_base_url=_nonempty(os.getenv("BILICOURSE_TEXT_BASE_URL"))
+        or _nonempty(file_values.get("text_base_url"))
+        or base_url,
+        text_api_key=_nonempty(os.getenv("BILICOURSE_TEXT_API_KEY"))
+        or _nonempty(file_values.get("text_api_key"))
+        or api_key,
+        vision_base_url=_nonempty(os.getenv("BILICOURSE_VISION_BASE_URL"))
+        or _nonempty(file_values.get("vision_base_url"))
+        or base_url,
+        vision_api_key=_nonempty(os.getenv("BILICOURSE_VISION_API_KEY"))
+        or _nonempty(file_values.get("vision_api_key"))
+        or api_key,
         text_model=_nonempty(os.getenv("BILICOURSE_TEXT_MODEL"))
         or _nonempty(file_values.get("text_model"))
         or DEFAULT_TEXT_MODEL,
@@ -135,6 +169,10 @@ def save_llm_settings(settings: LLMSettings) -> Path:
     payload = {
         "base_url": settings.base_url or "",
         "api_key": settings.api_key or "",
+        "text_base_url": settings.text_base_url or "",
+        "text_api_key": settings.text_api_key or "",
+        "vision_base_url": settings.vision_base_url or "",
+        "vision_api_key": settings.vision_api_key or "",
         "text_model": settings.text_model or DEFAULT_TEXT_MODEL,
         "vision_model": settings.vision_model or DEFAULT_VISION_MODEL,
         "enable_thinking": settings.enable_thinking,

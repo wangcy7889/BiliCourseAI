@@ -80,7 +80,7 @@ def create_report_app(
     report_dir: Path,
     *,
     output_dir: Path | None = None,
-    max_visual_requests: int = 2,
+    max_visual_requests: int = 4,
     prefer_stream_frames: bool = True,
     request_delay: float = 2.2,
 ) -> web.Application:
@@ -148,7 +148,7 @@ def create_report_app(
             raise web.HTTPBadRequest(text="report must be a relative report.json path.")
 
         settings = load_llm_settings()
-        if not settings.base_url or not settings.api_key or not settings.text_model:
+        if not settings.effective_text_base_url or not settings.effective_text_api_key or not settings.text_model:
             raise web.HTTPBadRequest(text="LLM settings are incomplete. Run bilicourse config llm first.")
 
         if lock.locked():
@@ -226,7 +226,7 @@ def run_report_server(
     host: str = "127.0.0.1",
     port: int = 8765,
     output_dir: Path | None = None,
-    max_visual_requests: int = 2,
+    max_visual_requests: int = 4,
     prefer_stream_frames: bool = True,
     request_delay: float = 2.2,
 ) -> None:

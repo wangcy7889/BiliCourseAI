@@ -40,7 +40,7 @@ async def analyze_frames(
         return []
 
     analyses: list[VisualAnalysis] = []
-    client = _client(settings)
+    client = _client(settings, role="vision")
     for frame in frames:
         if frame.error:
             continue
@@ -169,7 +169,7 @@ async def choose_visual_frames(
     if not settings.vision_model:
         return requests
 
-    client = _client(settings)
+    client = _client(settings, role="vision")
     chosen: list[VisualRequest] = []
     for request in requests:
         block = _find_block(report, request.block_id)

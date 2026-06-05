@@ -106,10 +106,14 @@ async def run_visual_pipeline(
     analyses_count = 0
     vision_skipped = False
 
-    if requests and not settings.vision_model:
+    has_vision_client = bool(
+        settings.vision_model and settings.effective_vision_base_url and settings.effective_vision_api_key
+    )
+
+    if requests and not has_vision_client:
         vision_skipped = True
         if progress:
-            progress("Visual requests skipped: vision_model is not configured.")
+            progress("Visual requests skipped: vision model/base_url/api_key is not configured.")
     elif requests:
         if progress:
             progress(f"Visual requests: {len(requests)}")

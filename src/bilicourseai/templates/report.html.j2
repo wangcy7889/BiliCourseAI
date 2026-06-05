@@ -200,18 +200,6 @@
       font-weight: 650;
       overflow-wrap: anywhere;
     }
-    .node-status {
-      display: inline-flex;
-      align-items: center;
-      margin-left: 8px;
-      padding: 1px 6px;
-      border-radius: 999px;
-      background: color-mix(in srgb, var(--petal), white 72%);
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 500;
-      white-space: nowrap;
-    }
     .summary {
       margin: 10px 0 0 120px;
       padding: 12px 14px;
@@ -742,7 +730,6 @@
                   </span>
                   <span class="block-title">
                     {{ block.title }}
-                    <span class="node-status">{{ "待生成" if block.status == "skeleton" and block.node_type == "leaf" else ("骨架" if block.status == "skeleton" else ("叶子" if block.node_type == "leaf" else "节点")) }}</span>
                   </span>
                 </summary>
                 {% if block.summary and not block.sections %}

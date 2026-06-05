@@ -77,13 +77,26 @@ export BILICOURSE_HOME="$HOME/bilicourseai-work"
 
 ## 配置 LLM
 
-BiliCourseAI 使用 OpenAI-compatible API，只需要提供 base URL、API key 和模型名。
+BiliCourseAI 使用 OpenAI-compatible API。文本模型和视觉模型可以共用同一个 base URL/API key，也可以分别配置。
 
 ```bash
 bilicourse config llm \
   --base-url "https://your-openai-compatible-endpoint/v1" \
   --api-key "YOUR_API_KEY" \
-  --text-model "Ali-dashscope/Qwen3.5-Plus" \
+  --text-model "SDU-AI/DeepSeek-V4-Flash" \
+  --vision-model "Ali-dashscope/Qwen3.5-Plus" \
+  --disable-thinking
+```
+
+如果文本模型和视觉模型来自不同服务：
+
+```bash
+bilicourse config llm \
+  --text-base-url "https://text-provider.example.com/v1" \
+  --text-api-key "YOUR_TEXT_API_KEY" \
+  --text-model "SDU-AI/DeepSeek-V4-Flash" \
+  --vision-base-url "https://vision-provider.example.com/v1" \
+  --vision-api-key "YOUR_VISION_API_KEY" \
   --vision-model "Ali-dashscope/Qwen3.5-Plus" \
   --disable-thinking
 ```
@@ -93,9 +106,18 @@ bilicourse config llm \
 ```bash
 export BILICOURSE_BASE_URL="https://your-openai-compatible-endpoint/v1"
 export BILICOURSE_API_KEY="YOUR_API_KEY"
-export BILICOURSE_TEXT_MODEL="Ali-dashscope/Qwen3.5-Plus"
+export BILICOURSE_TEXT_MODEL="SDU-AI/DeepSeek-V4-Flash"
 export BILICOURSE_VISION_MODEL="Ali-dashscope/Qwen3.5-Plus"
 export BILICOURSE_ENABLE_THINKING="false"
+```
+
+双端点环境变量为：
+
+```bash
+export BILICOURSE_TEXT_BASE_URL="https://text-provider.example.com/v1"
+export BILICOURSE_TEXT_API_KEY="YOUR_TEXT_API_KEY"
+export BILICOURSE_VISION_BASE_URL="https://vision-provider.example.com/v1"
+export BILICOURSE_VISION_API_KEY="YOUR_VISION_API_KEY"
 ```
 
 配置文件示例见：
@@ -218,7 +240,7 @@ bilicourse serve "data/reports/视频标题__BV号" --port 8770
 ```bash
 bilicourse expand "data/reports/视频标题__BV号/report.json" \
   --block-id p1-n1 \
-  --max-visual-requests 2 \
+  --max-visual-requests 4 \
   --llm-request-delay 2.2
 ```
 
@@ -285,9 +307,9 @@ bilicourse serve BVxxxxxxxxxx
 
 按分 P 标题构建题目树，适合逐题讲解合集。
 
-`--max-visual-requests 2`
+`--max-visual-requests 4`
 
-展开叶子节点时最多保留几张辅助理解图。图片会存到报告目录下的 `frames/`，HTML 使用相对路径引用。
+展开叶子节点时最多保留几张辅助理解图。`serve` 默认值为 4，可以按需要调大。图片会存到报告目录下的 `frames/`，HTML 使用相对路径引用。
 
 `--llm-request-delay 2.2`
 

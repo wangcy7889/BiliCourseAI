@@ -1,7 +1,11 @@
 {
   "base_url": "https://example.com/v1",
   "api_key": "YOUR_API_KEY",
-  "text_model": "Ali-dashscope/Qwen3.5-Plus",
+  "text_base_url": "https://text-provider.example.com/v1",
+  "text_api_key": "YOUR_TEXT_API_KEY",
+  "vision_base_url": "https://vision-provider.example.com/v1",
+  "vision_api_key": "YOUR_VISION_API_KEY",
+  "text_model": "SDU-AI/DeepSeek-V4-Flash",
   "vision_model": "Ali-dashscope/Qwen3.5-Plus",
   "enable_thinking": false
 }
