@@ -233,6 +233,9 @@ def _md_html(text: str) -> Markup:
         stripped = value.strip().strip("|")
         return [cell.strip() for cell in stripped.split("|")]
 
+    def tsv_cells(value: str) -> list[str]:
+        return [cell.strip() for cell in value.strip().split("\t")]
+
     def is_table_separator(value: str) -> bool:
         cells = table_cells(value)
         return bool(cells) and all(re.fullmatch(r":?-{3,}:?", cell.strip()) for cell in cells)
@@ -294,6 +297,8 @@ def _md_html(text: str) -> Markup:
 
     def format_inline(value: str) -> Markup:
         rendered = str(_md_inline(value))
+        if "$" in value or r"\(" in value or r"\[" in value:
+            return Markup(rendered)
         return Markup(
             re.sub(
                 r"^(?!<strong>)([^：:]{1,24}[：:])(.+)$",
@@ -305,6 +310,10 @@ def _md_html(text: str) -> Markup:
 
     def is_table_row(value: str) -> bool:
         return value.startswith("|") and value.endswith("|") and len(table_cells(value)) >= 2
+
+    def is_tsv_row(value: str) -> bool:
+        cells = tsv_cells(value)
+        return "\t" in value and len(cells) >= 2 and sum(bool(cell) for cell in cells) >= 2
 
     def render_table(start_index: int) -> int:
         header = table_cells(lines[start_index].strip())
@@ -335,6 +344,35 @@ def _md_html(text: str) -> Markup:
             for cell_index, cell in enumerate(table_cells(row_line)):
                 align = alignments[cell_index] if cell_index < len(alignments) else ""
                 html.append(f"<td{align}>{format_inline(cell)}</td>")
+            html.append("</tr>")
+            index += 1
+
+        html.append("</tbody>")
+        html.append("</table>")
+        return index
+
+    def render_tsv_table(start_index: int) -> int:
+        header = tsv_cells(lines[start_index].strip())
+        column_count = len(header)
+
+        html.append("<table>")
+        html.append("<thead><tr>")
+        for cell in header:
+            html.append(f"<th>{format_inline(cell)}</th>")
+        html.append("</tr></thead>")
+        html.append("<tbody>")
+
+        index = start_index + 1
+        while index < len(lines):
+            row_line = lines[index].strip()
+            if not is_tsv_row(row_line):
+                break
+            cells = tsv_cells(row_line)
+            if len(cells) != column_count:
+                break
+            html.append("<tr>")
+            for cell in cells:
+                html.append(f"<td>{format_inline(cell)}</td>")
             html.append("</tr>")
             index += 1
 
@@ -394,6 +432,12 @@ def _md_html(text: str) -> Markup:
             flush_paragraph()
             close_lists()
             line_index = render_table(line_index)
+            continue
+
+        if line_index + 1 < len(lines) and is_tsv_row(line) and is_tsv_row(lines[line_index + 1].strip()):
+            flush_paragraph()
+            close_lists()
+            line_index = render_tsv_table(line_index)
             continue
 
         ordered = re.match(r"^(\d+)[.．、](?!\d)\s*(.+)$", line)
