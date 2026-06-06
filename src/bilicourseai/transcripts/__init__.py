@@ -4,7 +4,6 @@ from bilicourseai.transcripts.punctuation import (
     punctuate_lines,
     readable_transcript_paragraphs,
 )
-from bilicourseai.transcripts.question_tree import build_question_part_tree
 from bilicourseai.transcripts.segment import segment_part, segment_report_parts
 from bilicourseai.transcripts.transcript import (
     compact_transcript_slices,
@@ -16,7 +15,6 @@ from bilicourseai.transcripts.transcript import (
 )
 
 __all__ = [
-    "build_question_part_tree",
     "compact_transcript_slices",
     "lines_for_range",
     "punctuate_lines",

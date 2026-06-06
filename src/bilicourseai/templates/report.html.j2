@@ -405,13 +405,29 @@
       min-height: 20px;
       margin-top: 8px;
     }
+    .node-breadcrumb {
+      margin: 2px 0 6px 120px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+      overflow-wrap: anywhere;
+    }
     .child-blocks {
-      margin: 12px 0 0 120px;
-      border-left: 2px solid var(--line);
-      padding-left: 14px;
+      margin: 14px 0 0;
+      padding-left: 0;
+      border-left: 0;
     }
     .child-blocks details {
       border-top: 1px solid color-mix(in srgb, var(--line), white 45%);
+    }
+    details.branch-heading {
+      padding-bottom: 4px;
+    }
+    details.branch-heading > summary {
+      color: var(--accent);
+    }
+    details.branch-heading > summary .block-title {
+      font-size: 18px;
     }
     .transcript {
       margin: 8px 0 0;
@@ -628,7 +644,7 @@
         grid-template-columns: 1fr;
         gap: 4px;
       }
-      .summary, .key-points, .transcript-toggle, .expand-command, .child-blocks, .note-sections, .node-actions {
+      .summary, .key-points, .transcript-toggle, .expand-command, .child-blocks, .note-sections, .node-actions, .node-breadcrumb {
         margin-left: 0;
       }
       .visual {
@@ -679,10 +695,21 @@
         {% endmacro %}
         {% for part in report.parts %}
           {% if part.blocks %}
-            <div class="toc-part">
-              {% set part_title = "题目目录" if part.page == 0 else ("P" ~ part.page ~ " " ~ part.title) %}
-              {% set visible_roots = part.blocks|rejectattr("node_type", "equalto", "raw")|list %}
+            {% set part_title = part.title if part.page == 0 else ("P" ~ part.page ~ " " ~ part.title) %}
+            {% set visible_roots = part.blocks|rejectattr("node_type", "equalto", "raw")|list %}
+            {% if part.page == 0 and part.title == "分 P 目录" %}
+              {% for block in visible_roots %}
+                <div class="toc-part">
+                  <ul class="toc-tree">
+                    {{ render_toc_block(block) }}
+                  </ul>
+                </div>
+              {% endfor %}
+            {% else %}
+              <div class="toc-part">
               {% set single_leaf_part = visible_roots|length == 1 and visible_roots[0].node_type == "leaf" and not (visible_roots[0].children|rejectattr("node_type", "equalto", "raw")|list) %}
+              {% set single_part_wrapper = part.page > 0 and visible_roots|length == 1 and visible_roots[0].id == ("part-p" ~ part.page) and (visible_roots[0].children|rejectattr("node_type", "equalto", "raw")|list) %}
+              {% set toc_roots = (visible_roots[0].children|rejectattr("node_type", "equalto", "raw")|list) if single_part_wrapper else visible_roots %}
               {% if single_leaf_part %}
                 <div class="toc-row">
                   <span class="toc-spacer"></span>
@@ -694,12 +721,13 @@
                   <a class="toc-node-link is-branch" href="#part-{{ part.page }}" data-toc-branch>{{ part_title }}</a>
                 </div>
                 <ul class="toc-tree toc-children" id="toc-part-children-{{ part.page }}" hidden>
-                  {% for block in visible_roots %}
+                  {% for block in toc_roots %}
                     {{ render_toc_block(block) }}
                   {% endfor %}
                 </ul>
               {% endif %}
-            </div>
+              </div>
+            {% endif %}
           {% endif %}
         {% endfor %}
       </div>
@@ -708,31 +736,43 @@
       {% for part in report.parts %}
         {% if part.blocks %}
         <article class="part" id="part-{{ part.page }}">
-          <h2>{{ "题目目录" if part.page == 0 else ("P" ~ part.page ~ " " ~ part.title) }}</h2>
+          {% if not (part.page == 0 and part.title == "分 P 目录") %}
+            <h2>{{ part.title if part.page == 0 else ("P" ~ part.page ~ " " ~ part.title) }}</h2>
+          {% endif %}
           {% if part.selected_subtitle_track %}
             <div class="meta">
               <span>字幕: {{ part.selected_subtitle_track.lan_doc or part.selected_subtitle_track.lan }}</span>
               <span>{{ "AI" if part.selected_subtitle_track.is_ai else "人工/未知" }}</span>
             </div>
           {% endif %}
-          {% if not part.transcript %}
+          {% if part is not has_transcript %}
             <div class="empty">没有抓取到字幕。后续可接入 cookies、ASR 或本地视频音频提取。</div>
           {% endif %}
-          {% macro render_block(block, part) %}
+          {% macro render_block(block, part, ancestors="") %}
             {% if block.node_type != "raw" %}
               {% set display_part_page = block.source_part_page or part.page %}
-              <details id="{{ block.id }}" open>
+              {% set visible_children = block.children|rejectattr("node_type", "equalto", "raw")|list %}
+              {% set has_note_content = block.key_points or block.sections or block.frames or block.visual_requests or block.visual_analyses %}
+              {% set branch_heading_only = visible_children and block.status == "expanded" and not has_note_content %}
+              <details id="{{ block.id }}" class="{{ 'branch-heading' if branch_heading_only else '' }}" open>
+                {% if ancestors %}
+                  <div class="node-breadcrumb">{{ ancestors }}</div>
+                {% endif %}
                 <summary>
-                  <span class="time">
-                    <a href="{{ report.source_url|bilibili_time_url(display_part_page, block.start) }}" target="_blank" rel="noopener">
-                      {{ block.start|time_label }} - {{ block.end|time_label }}
-                    </a>
-                  </span>
+                  {% if branch_heading_only %}
+                    <span class="time"></span>
+                  {% else %}
+                    <span class="time">
+                      <a href="{{ report.source_url|bilibili_time_url(display_part_page, block.start) }}" target="_blank" rel="noopener">
+                        {{ block.start|time_label }} - {{ block.end|time_label }}
+                      </a>
+                    </span>
+                  {% endif %}
                   <span class="block-title">
                     {{ block.title }}
                   </span>
                 </summary>
-                {% if block.summary and not block.sections %}
+                {% if block.summary and not block.sections and not branch_heading_only %}
                   <div class="summary">{{ block.summary|note_html }}</div>
                 {% endif %}
                 <div class="node-actions" data-block-actions="{{ block.id }}">
@@ -900,19 +940,22 @@
                     </details>
                   {% endif %}
                 {% endfor %}
-                {% set visible_children = block.children|rejectattr("node_type", "equalto", "raw")|list %}
                 {% if visible_children %}
                   <div class="child-blocks">
+                    {% set child_ancestors = ancestors ~ " / " ~ block.title if ancestors else block.title %}
                     {% for child in visible_children %}
-                      {{ render_block(child, part) }}
+                      {{ render_block(child, part, child_ancestors) }}
                     {% endfor %}
                   </div>
                 {% endif %}
               </details>
             {% endif %}
           {% endmacro %}
-          {% for block in part.blocks %}
-            {{ render_block(block, part) }}
+          {% set visible_roots = part.blocks|rejectattr("node_type", "equalto", "raw")|list %}
+          {% set single_part_wrapper = part.page > 0 and visible_roots|length == 1 and visible_roots[0].id == ("part-p" ~ part.page) and (visible_roots[0].children|rejectattr("node_type", "equalto", "raw")|list) %}
+          {% set body_roots = (visible_roots[0].children|rejectattr("node_type", "equalto", "raw")|list) if single_part_wrapper else visible_roots %}
+          {% for block in body_roots %}
+              {{ render_block(block, part) }}
           {% endfor %}
         </article>
         {% endif %}

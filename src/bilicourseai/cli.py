@@ -37,6 +37,7 @@ from bilicourseai.settings import (
     save_bilibili_credential_settings,
     save_llm_settings,
 )
+from bilicourseai.outline import build_part_outline_tree
 from bilicourseai.source import (
     capture_requested_frames,
     check_bilibili_credential,
@@ -44,7 +45,7 @@ from bilicourseai.source import (
     poll_qr_login,
     start_qr_login,
 )
-from bilicourseai.transcripts import build_question_part_tree, punctuate_lines, segment_report_parts
+from bilicourseai.transcripts import punctuate_lines, segment_report_parts
 from bilicourseai.visual import analyze_frames, rewrite_visual_notes, run_visual_pipeline
 
 
@@ -68,6 +69,19 @@ def _mask(value: str | None, keep: int = 4) -> str:
 
 def _progress(message: str) -> None:
     print(message, flush=True)
+
+
+def _normalize_part_tree_mode(value: str | None, part_page: int | None = None) -> str | None:
+    if not value:
+        return None
+    mode = value.strip().lower()
+    if part_page is not None:
+        raise typer.BadParameter("--part-tree-mode 不能和 --part-page 同时使用")
+    if mode in {"question", "questions", "title-groups"}:
+        raise typer.BadParameter("--part-tree-mode question 已移除；请使用 --part-tree-mode parts")
+    if mode not in {"parts", "part"}:
+        raise typer.BadParameter("--part-tree-mode 目前支持 parts")
+    return "parts"
 
 
 @auth_app.command("set")
@@ -355,7 +369,7 @@ def outline(
     part_tree_mode: str | None = typer.Option(
         None,
         "--part-tree-mode",
-        help="按分 P 标题生成树；可选 question，适合逐题讲解合集",
+        help="不调用 LLM，按分 P 生成初始树；可选 parts",
     ),
     max_outline_windows: int = typer.Option(0, "--max-outline-windows", help="最多处理多少个骨架窗口，0 表示不限"),
     base_url: str | None = typer.Option(None, "--base-url", help="OpenAI-compatible API base URL"),
@@ -369,6 +383,7 @@ def outline(
     """Generate only a coarse expandable outline, without screenshots or vision analysis."""
 
     async def run() -> None:
+        normalized_part_tree_mode = _normalize_part_tree_mode(part_tree_mode, part_page=part_page)
         _apply_llm_overrides(
             base_url,
             api_key,
@@ -395,14 +410,10 @@ def outline(
             report = fetched_report
         for part in report.parts:
             part.transcript = punctuate_lines(part.transcript)
-        if part_tree_mode:
-            if part_page is not None:
-                raise typer.BadParameter("--part-tree-mode 不能和 --part-page 同时使用")
-            if part_tree_mode.lower() not in {"question", "questions", "title-groups"}:
-                raise typer.BadParameter("--part-tree-mode 目前支持 question")
-            build_question_part_tree(report)
+        if normalized_part_tree_mode == "parts":
+            build_part_outline_tree(report)
             artifacts = write_report(report, output_dir)
-            typer.echo(f"Question tree: {sum(len(part.blocks) for part in report.parts)} root nodes")
+            typer.echo(f"Part tree: {sum(len(part.blocks) for part in report.parts)} root nodes")
             typer.echo(f"JSON: {artifacts.json_path}")
             typer.echo(f"HTML: {artifacts.html_path}")
             return
@@ -509,6 +520,7 @@ def expand(
             settings,
             max_visual_requests=max_visual_requests,
             request_delay=llm_request_delay,
+            progress=typer.echo,
         )
 
         await run_visual_pipeline(

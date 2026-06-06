@@ -9,8 +9,9 @@ from typing import Any
 
 from aiohttp import web
 
-from bilicourseai.ai import expand_block
+from bilicourseai.ai import expand_block, outline_report
 from bilicourseai.models import KnowledgeBlock, VideoReport
+from bilicourseai.outline import is_part_outline_root_node
 from bilicourseai.paths import output_dir_for_report_dir
 from bilicourseai.reports import write_report_to_dir
 from bilicourseai.settings import DEFAULT_DATA_DIR, LLMSettings, load_llm_settings
@@ -54,6 +55,19 @@ async def _expand_current_block(
     prefer_stream_frames: bool,
     request_delay: float,
 ) -> dict[str, Any]:
+    block = find_block(report, block_id)
+    if block is not None and is_part_outline_root_node(report, block) and not block.children and not block.sections:
+        _log(f"{block_id}: calling text LLM outline for P{block.source_part_page}")
+        await outline_report(
+            report,
+            settings,
+            part_page=block.source_part_page,
+            request_delay=request_delay,
+            progress=lambda message: _log(f"{block_id}: {message}"),
+        )
+        _log(f"{block_id}: outline done")
+        return {"frames": 0, "analyses": 0}
+
     _log(f"{block_id}: calling text LLM expand")
     visual_requests = await expand_block(
         report,
@@ -61,6 +75,7 @@ async def _expand_current_block(
         settings,
         max_visual_requests=max_visual_requests,
         request_delay=request_delay,
+        progress=lambda message: _log(f"{block_id}: {message}"),
     )
     _log(f"{block_id}: text expand done, visual_requests={len(visual_requests)}")
 

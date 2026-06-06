@@ -7,6 +7,7 @@ from bilicourseai.outline.boundaries import (
     boundary_review_payload_for_blocks,
 )
 from bilicourseai.outline.normalization import normalize_outline_nodes, quality_fields
+from bilicourseai.outline.part_tree import build_part_outline_tree, find_part_outline_node, is_part_outline_root_node
 from bilicourseai.outline.quality import (
     MAX_LEAF_SECONDS,
     SHORT_BLOCK_AS_LEAF_SECONDS,
@@ -32,6 +33,9 @@ __all__ = [
     "apply_outline_quality_gate",
     "boundary_review_payload",
     "boundary_review_payload_for_blocks",
+    "build_part_outline_tree",
+    "find_part_outline_node",
+    "is_part_outline_root_node",
     "merge_short_adjacent_nodes",
     "normalize_outline_nodes",
     "part_duration",

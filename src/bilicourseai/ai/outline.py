@@ -8,11 +8,12 @@ from typing import Any
 from openai import AsyncOpenAI
 
 from bilicourseai.ai.common import find_report_part
-from bilicourseai.json_utils import best_effort_json_object as _best_effort_json_object
+from bilicourseai.json_utils import best_effort_json_value as _best_effort_json_value
 from bilicourseai.llm_client import create_client as _client, extra_body as _extra_body
 from bilicourseai.models import KnowledgeBlock, VideoReport
 from bilicourseai.outline.boundaries import apply_boundary_adjustments
 from bilicourseai.outline.normalization import normalize_outline_nodes, quality_fields
+from bilicourseai.outline.part_tree import find_part_outline_node
 from bilicourseai.outline.quality import apply_outline_quality_gate, merge_short_adjacent_nodes
 from bilicourseai.outline.prompts import (
     DIRECT_PART_OUTLINE_MAX_CHARS,
@@ -93,7 +94,11 @@ async def outline_report(
                 transcript=root_lines,
             )
             part.blocks.append(root)
+            synced = _sync_part_tree_node(report, part)
             emit(f"P{page}: short part marked as leaf")
+            if synced:
+                emit(f"P{page}: synced outline into part tree")
+            emit(f"P{page}: root nodes=1")
             continue
 
         part_plan: dict[str, Any] | None = None
@@ -201,11 +206,65 @@ async def outline_report(
                 for block in part.blocks:
                     apply_outline_quality_gate(block)
                 emit(f"P{page}: adjusted boundaries={changed}")
-        emit(f"P{page}: root nodes={len(part.blocks)}")
+        generated_count = len(part.blocks)
+        synced = _sync_part_tree_node(report, part)
+        if synced:
+            emit(f"P{page}: synced outline into part tree")
+        emit(f"P{page}: root nodes={generated_count}")
 
     report.llm_notes.append(
         f"Generated outline with {sum(len(part.blocks) for part in report.parts)} root nodes."
     )
+
+
+def _sync_part_tree_node(report: VideoReport, part) -> bool:
+    part_node = find_part_outline_node(report, part.page)
+    if part_node is None:
+        return False
+    source_blocks = part.blocks
+    if not source_blocks:
+        return False
+    if len(source_blocks) == 1:
+        replacement = source_blocks[0]
+        part_node.title = replacement.title
+        part_node.start = replacement.start
+        part_node.end = replacement.end
+        part_node.summary = replacement.summary
+        part_node.node_type = replacement.node_type
+        part_node.status = replacement.status
+        part_node.expandable = replacement.expandable
+        part_node.granularity = replacement.granularity
+        part_node.should_expand = replacement.should_expand
+        part_node.expand_reason = replacement.expand_reason
+        part_node.boundary_confidence = replacement.boundary_confidence
+        part_node.split_hints = replacement.split_hints
+        part_node.key_points = replacement.key_points
+        part_node.transcript = replacement.transcript
+        part_node.children = replacement.children
+        part_node.sections = replacement.sections
+        part_node.visual_requests = replacement.visual_requests
+        part_node.frames = replacement.frames
+        part_node.visual_analyses = replacement.visual_analyses
+    else:
+        part_node.node_type = "branch"
+        part_node.status = "expanded"
+        part_node.expandable = False
+        part_node.should_expand = True
+        part_node.children = source_blocks
+        part_node.sections = []
+        part_node.visual_requests = []
+        part_node.frames = []
+        part_node.visual_analyses = []
+    part.blocks = []
+    return True
+
+
+def _payload_object(value: Any, list_key: str) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, list):
+        return {list_key: value}
+    return {}
 
 
 async def _outline_window(
@@ -228,7 +287,7 @@ async def _outline_window(
         temperature=0.2,
         extra_body=_extra_body(settings),
     )
-    return _best_effort_json_object(response.choices[0].message.content or "{}")
+    return _payload_object(_best_effort_json_value(response.choices[0].message.content or "{}"), "candidates")
 
 
 async def _plan_part_outline(
@@ -250,7 +309,7 @@ async def _plan_part_outline(
         temperature=0.15,
         extra_body=_extra_body(settings),
     )
-    return _best_effort_json_object(response.choices[0].message.content or "{}")
+    return _payload_object(_best_effort_json_value(response.choices[0].message.content or "{}"), "plan")
 
 
 async def _outline_whole_part(
@@ -273,7 +332,7 @@ async def _outline_whole_part(
         temperature=0.2,
         extra_body=_extra_body(settings),
     )
-    return _best_effort_json_object(response.choices[0].message.content or "{}")
+    return _payload_object(_best_effort_json_value(response.choices[0].message.content or "{}"), "nodes")
 
 
 async def _review_part_boundaries(
@@ -295,7 +354,7 @@ async def _review_part_boundaries(
         temperature=0.1,
         extra_body=_extra_body(settings),
     )
-    return _best_effort_json_object(response.choices[0].message.content or "{}")
+    return _payload_object(_best_effort_json_value(response.choices[0].message.content or "{}"), "boundaries")
 
 
 async def _reduce_part_outline(
@@ -328,4 +387,4 @@ async def _reduce_part_outline(
         temperature=0.2,
         extra_body=_extra_body(settings),
     )
-    return _best_effort_json_object(response.choices[0].message.content or "{}")
+    return _payload_object(_best_effort_json_value(response.choices[0].message.content or "{}"), "nodes")

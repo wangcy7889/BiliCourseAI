@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from collections.abc import Callable
 from typing import Any
 
 from openai import AsyncOpenAI
@@ -31,7 +32,12 @@ async def expand_block(
     settings: LLMSettings,
     max_visual_requests: int = 3,
     request_delay: float = 0.0,
+    progress: Callable[[str], None] | None = None,
 ) -> list[VisualRequest]:
+    def emit(message: str) -> None:
+        if progress:
+            progress(message)
+
     if not settings.text_model:
         raise ValueError("LLM text model is required.")
     block = find_report_block(report, block_id)
@@ -138,6 +144,7 @@ async def expand_block(
             block.visual_analyses = []
         else:
             if len(block.children) > 1:
+                emit(f"{block.id}: reviewing {len(block.children) - 1} child boundaries")
                 boundary_payload = await _review_child_boundaries(client, settings, report, part, block)
                 if request_delay > 0:
                     await asyncio.sleep(request_delay)
@@ -146,6 +153,7 @@ async def expand_block(
                     for child in block.children:
                         apply_outline_quality_gate(child)
                     report.llm_notes.append(f"Reviewed {block.id} child boundaries and adjusted {changed}.")
+                    emit(f"{block.id}: adjusted child boundaries={changed}")
             report.llm_notes.append(f"Expanded {block.id} into {len(block.children)} child nodes.")
             return []
 

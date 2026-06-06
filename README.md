@@ -16,6 +16,34 @@ BiliCourseAI 是一个面向 Bilibili 课程视频的 AI 辅助学习报告 CLI 
 - 输出本地 `report.json` 与可浏览的 `report.html`
 - 本地 `serve` 模式支持网页内展开/重做
 
+## 项目截图
+
+BiliCourseAI 生成的报告采用左右分栏布局：左侧是自动生成的课程知识树，右侧是当前节点的学习笔记、公式/表格和辅助理解图。以下截图来自本地生成的示例报告。
+
+### 化学：考前知识点与板书辅助
+
+![化学报告示例：左侧课程树，右侧为物质的量笔记和板书辅助理解图](images/chemistry.png)
+
+### 数学：公式表格与视觉补充
+
+![数学报告示例：三角恒等变换笔记、公式表格和辅助理解图](images/math.png)
+
+### 物理：推导过程与关键帧讲解
+
+![物理报告示例：倒空间布拉格方程推导和课堂板书关键帧](images/physics.png)
+
+### 语言学：人文课程的层级笔记
+
+![语言学报告示例：层级目录、表格化笔记和材料截图分析](images/linguistic.png)
+
+报告的核心交互：
+
+- 左侧目录支持递归折叠/展开，适合长课和多 P 合集。
+- 右侧笔记支持 Markdown 公式、表格、列表和原始字幕折叠查看。
+- 辅助理解图使用报告目录内的 `frames/` 相对路径，便于整体复制或发布示例。
+- 通过 `bilicourse serve` 打开本地服务后，可在网页中继续展开节点或重做当前节点。
+
+
 ## 环境要求
 
 - Python 3.11 或更高版本
@@ -39,6 +67,8 @@ python -m pip install -e .
 bilicourse --help
 ```
 
+建议在 conda、venv 或 uv 等隔离环境中安装，避免影响系统 Python。
+
 ### Linux / macOS
 
 ```bash
@@ -49,6 +79,12 @@ python -m pip install -U pip
 python -m pip install -e .
 
 bilicourse --help
+```
+
+项目依赖 `httpx[socks]` 以兼容部分代理环境；正常 `pip install -e .` 会自动安装。如果迁移机器后出现 socks/proxy 相关导入错误，可先确认依赖是否安装完整：
+
+```bash
+python -m pip install "httpx[socks]"
 ```
 
 ## 本地数据目录
@@ -174,6 +210,8 @@ bilicourse probe "https://www.bilibili.com/video/BVxxxxxxxxxx"
 
 ### 2. 生成知识树骨架
 
+普通课程视频建议先生成 AI 知识树骨架：
+
 ```bash
 bilicourse outline BVxxxxxxxxxx \
   --outline-window-seconds 720 \
@@ -188,6 +226,14 @@ bilicourse outline BVxxxxxxxxxx --part-page 8
 ```
 
 此模式只会抓取指定分 P 的字幕，不会逐个初始化其他分 P。如果同一个报告目录里已经有其他分 P，已有内容会被保留。
+
+如果视频本身就是很多清晰分 P 的合集，并且你只想先得到一个可点选的分 P 目录，可以不调用 LLM 初始化：
+
+```bash
+bilicourse outline BVxxxxxxxxxx --part-tree-mode parts
+```
+
+之后使用 `bilicourse serve BVxxxxxxxxxx`，点击某个分 P 节点时再只分析这一 P。
 
 输出通常位于：
 
@@ -204,7 +250,7 @@ data/reports/视频标题__BV号/report.html
 bilicourse serve "data/reports/视频标题__BV号"
 ```
 
-也可以用更短的写法，只要能唯一匹配 `data/reports` 下的报告目录即可：
+也可以用更短的写法匹配 `data/reports` 下的报告目录。匹配到多个报告时，CLI 会弹出选项，可用方向键选择后回车确认：
 
 ```bash
 bilicourse serve BVxxxxxxxxxx
@@ -280,14 +326,16 @@ bilicourse outline BVxxxxxxxxxx --part-page 42
 - 之后运行 `--part-page 8`：只抓取并生成 P8，同时保留已有的 P7。
 - 不带 `--part-page`：初始化/更新完整视频报告，会逐个处理所有分 P。
 
-### 逐题讲解或合集视频
+### 分 P 已经清晰的视频
 
-如果一个分 P 基本对应一道题，优先使用题目树模式：
+如果一个分 P 基本就是一个自然学习单元，或视频是逐题讲解/系列课合集，可以先使用分 P 目录模式：
 
 ```bash
-bilicourse outline BVxxxxxxxxxx --part-tree-mode question
+bilicourse outline BVxxxxxxxxxx --part-tree-mode parts
 bilicourse serve BVxxxxxxxxxx
 ```
+
+这个模式不会在初始化时调用 LLM，只按 Bilibili 原始分 P 顺序生成目录。点击某个分 P 后，`serve` 会先为该分 P 生成局部知识树；继续点击子节点时再生成学习笔记和辅助理解图。
 
 ## 常用参数
 
@@ -303,9 +351,9 @@ bilicourse serve BVxxxxxxxxxx
 
 只抓取并处理第 N 个分 P。适合多 P 大合集的快速初始化，也适合调试指定分 P；已有报告中的其他分 P 会保留。
 
-`--part-tree-mode question`
+`--part-tree-mode parts`
 
-按分 P 标题构建题目树，适合逐题讲解合集。
+不调用 LLM，按原始分 P 顺序生成初始目录。每个分 P 是一个可展开节点，适合逐题讲解合集或分 P 标题已经足够清晰的视频。
 
 `--max-visual-requests 4`
 
@@ -370,6 +418,17 @@ bilicourse outline BVxxxxxxxxxx --llm-request-delay 3.5
 
 通常说明 `report.json` 引用的图片文件已经不存在。重新展开或重做对应节点即可重新生成。
 
+### 安装时构建 `jiter` / `maturin` 失败
+
+通常是 pip 没拿到适合当前 Python/平台的预编译 wheel，转而尝试本地编译 Rust 依赖。优先尝试：
+
+```bash
+python -m pip install -U pip setuptools wheel
+python -m pip install -e .
+```
+
+如果仍然失败，建议换用官方 CPython 3.11/3.12 的 64 位环境，或检查当前镜像源是否缺少对应 wheel。
+
 ### 查看更多命令
 
 ```bash
@@ -378,29 +437,3 @@ bilicourse outline --help
 bilicourse expand --help
 bilicourse serve --help
 ```
-
-## 开发
-
-```bash
-python -m pip install -e .
-python - <<'PY'
-from pathlib import Path
-import py_compile
-for path in Path("src/bilicourseai").rglob("*.py"):
-    py_compile.compile(str(path), doraise=True)
-PY
-```
-
-主要目录：
-
-```text
-src/bilicourseai/           Python 源码
-src/bilicourseai/ai/        LLM 编排层：骨架、展开、分段、文本增强
-src/bilicourseai/outline/   知识树骨架相关提示词、窗口和节点归一化
-src/bilicourseai/visual/    截图候选选择、视觉分析和视觉流水线
-src/bilicourseai/reports/   report.json/report.html 写入、合并和选择
-src/bilicourseai/templates/ HTML 报告模板
-config/*.example.json       示例配置
-```
-
-分层约定：`ai/` 只负责调用模型和编排流程；`outline/`、`visual/`、`reports/` 放对应领域的实现细节。CLI 和本地服务优先依赖这些包的公开出口，避免重新引入旧的平面模块。

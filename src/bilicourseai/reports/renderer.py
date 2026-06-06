@@ -9,7 +9,7 @@ from markupsafe import Markup, escape
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from bilicourseai.models import FrameArtifact, ReportArtifacts, VideoReport, VisualAnalysis
+from bilicourseai.models import FrameArtifact, KnowledgeBlock, ReportArtifacts, VideoPart, VideoReport, VisualAnalysis
 from bilicourseai.paths import report_dir_for
 from bilicourseai.transcripts.punctuation import readable_transcript_paragraphs
 
@@ -35,6 +35,18 @@ def _relative_asset(path: str, report_dir: Path) -> str:
 
 def _sentences(lines) -> list[str]:
     return readable_transcript_paragraphs(lines)
+
+
+def _block_has_transcript(block: KnowledgeBlock) -> bool:
+    if block.transcript:
+        return True
+    return any(_block_has_transcript(child) for child in block.children)
+
+
+def _part_has_transcript(part: VideoPart) -> bool:
+    if part.transcript:
+        return True
+    return any(_block_has_transcript(block) for block in part.blocks)
 
 
 def _clip_text(text: str, max_chars: int = 180) -> str:
@@ -136,6 +148,7 @@ def _md_inline(text: str) -> Markup:
     )
     html = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", html)
     html = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"<em>\1</em>", html)
+    html = re.sub(r"&lt;br\s*/?&gt;", "<br>", html, flags=re.IGNORECASE)
     html = _restore_spans(html, spans)
     return Markup(html)
 
@@ -157,6 +170,21 @@ def _repair_latex_control_escapes(text: str) -> str:
     for broken, fixed in replacements.items():
         text = text.replace(broken, fixed)
     return text
+
+
+def _normalize_overescaped_latex(text: str) -> str:
+    # Some payloads over-escape LaTeX before JSON encoding, so after JSON parsing
+    # math still contains `\\sin` instead of `\sin`. MathJax treats that as a
+    # line-break command plus text and may render the formula as empty/error.
+    math_pattern = re.compile(
+        r"(\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$\$[\s\S]*?\$\$|(?<![\w$])\$(?![\s$])[^$\n]+?(?<![\s$])\$(?![\w$]))"
+    )
+
+    def normalize_span(match: re.Match[str]) -> str:
+        value = match.group(0)
+        return re.sub(r"\\\\(?=[A-Za-z,;!])", r"\\", value)
+
+    return math_pattern.sub(normalize_span, text)
 
 
 def _escape_unmatched_math_dollars(text: str) -> str:
@@ -199,7 +227,9 @@ def _simplify_standalone_latex_symbols(text: str) -> str:
 
 def _md_html(text: str) -> Markup:
     text = _escape_unmatched_math_dollars(
-        _simplify_standalone_latex_symbols(_repair_latex_control_escapes(text or ""))
+        _normalize_overescaped_latex(
+            _simplify_standalone_latex_symbols(_repair_latex_control_escapes(text or ""))
+        )
     ).strip()
     if not text:
         return Markup("")
@@ -494,6 +524,7 @@ def write_report_to_dir(report: VideoReport, report_dir: Path) -> ReportArtifact
         env.filters["visual_note_text"] = _visual_note_text
         env.filters["bilibili_time_url"] = _bilibili_time_url
         env.filters["time_label"] = _time_label
+        env.tests["has_transcript"] = _part_has_transcript
         template = env.get_template("report.html.j2")
         html_path.write_text(template.render(report=report, report_dir=report_dir), encoding="utf-8")
 

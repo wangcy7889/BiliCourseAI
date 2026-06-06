@@ -5,7 +5,7 @@ import re
 from typing import Any
 
 
-def extract_json_object(text: str) -> dict[str, Any]:
+def extract_json_value(text: str) -> Any:
     text = text.strip()
     if text.startswith("```"):
         lines = text.splitlines()
@@ -16,6 +16,28 @@ def extract_json_object(text: str) -> dict[str, Any]:
         text = "\n".join(lines).strip()
     try:
         return json.loads(text)
+    except json.JSONDecodeError:
+        raise
+
+
+def extract_json_object(text: str) -> dict[str, Any]:
+    value = extract_json_value(text)
+    if isinstance(value, dict):
+        return value
+    raise json.JSONDecodeError("Expected JSON object", text, 0)
+
+
+def extract_json_object_from_text(text: str) -> dict[str, Any]:
+    text = text.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    try:
+        return extract_json_object(text)
     except json.JSONDecodeError:
         start = text.find("{")
         end = text.rfind("}")
@@ -93,6 +115,13 @@ def escape_invalid_json_string_backslashes(text: str) -> str:
 
 def best_effort_json_object(text: str) -> dict[str, Any]:
     try:
-        return extract_json_object(text)
+        return extract_json_object_from_text(text)
     except json.JSONDecodeError:
         return salvage_json_object(text)
+
+
+def best_effort_json_value(text: str) -> Any:
+    try:
+        return extract_json_value(text)
+    except json.JSONDecodeError:
+        return best_effort_json_object(text)
