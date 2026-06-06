@@ -109,8 +109,6 @@ export BILICOURSE_HOME="$HOME/bilicourseai-work"
 - `BILICOURSE_DATA_DIR`
 - `BILICOURSE_CONFIG_DIR`
 
-真实配置和报告数据默认不会被 git 跟踪。
-
 ## 配置 LLM
 
 BiliCourseAI 使用 OpenAI-compatible API。文本模型和视觉模型可以共用同一个 base URL/API key，也可以分别配置。
@@ -162,8 +160,6 @@ export BILICOURSE_VISION_API_KEY="YOUR_VISION_API_KEY"
 config/llm_settings.example.json
 ```
 
-不要提交真实 API key。
-
 ## 登录 Bilibili
 
 字幕接口经常需要登录态。推荐扫码登录：
@@ -189,8 +185,6 @@ bilicourse auth set
 ```text
 config/bilibili_credentials.example.json
 ```
-
-不要提交真实 Bilibili cookie。
 
 ## 从零生成一个报告
 
