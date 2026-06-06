@@ -65,9 +65,30 @@ def _base_part_node(part: VideoPart) -> KnowledgeBlock:
 
 def _copy_block_into_part_node(part: VideoPart, block: KnowledgeBlock) -> KnowledgeBlock:
     block.id = f"part-p{part.page}"
-    block.source_part_page = part.page
+    bind_block_to_part(block, part.page, depth=0)
     block.depth = 0
     return block
+
+
+def bind_block_to_part(block: KnowledgeBlock, page: int, depth: int | None = None) -> None:
+    block.source_part_page = page
+    if depth is not None:
+        block.depth = depth
+    for request in block.visual_requests:
+        request.part_page = page
+    for frame in block.frames:
+        frame.part_page = page
+    for analysis in block.visual_analyses:
+        analysis.part_page = page
+    for section in block.sections:
+        for request in section.visual_requests:
+            request.part_page = page
+        for frame in section.frames:
+            frame.part_page = page
+        for analysis in section.visual_analyses:
+            analysis.part_page = page
+    for child in block.children:
+        bind_block_to_part(child, page, None if depth is None else depth + 1)
 
 
 def _part_node_from_existing_blocks(part: VideoPart) -> KnowledgeBlock:
@@ -84,7 +105,7 @@ def _part_node_from_existing_blocks(part: VideoPart) -> KnowledgeBlock:
     node.summary = f"{node.title} 已有 {len(part.blocks)} 个子节点。"
     node.children = part.blocks
     for child in node.children:
-        child.depth = max(1, child.depth)
+        bind_block_to_part(child, part.page, depth=max(1, child.depth))
     return node
 
 

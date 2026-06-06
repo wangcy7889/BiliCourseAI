@@ -13,7 +13,7 @@ from bilicourseai.llm_client import create_client as _client, extra_body as _ext
 from bilicourseai.models import KnowledgeBlock, VideoReport
 from bilicourseai.outline.boundaries import apply_boundary_adjustments
 from bilicourseai.outline.normalization import normalize_outline_nodes, quality_fields
-from bilicourseai.outline.part_tree import find_part_outline_node
+from bilicourseai.outline.part_tree import bind_block_to_part, find_part_outline_node
 from bilicourseai.outline.quality import apply_outline_quality_gate, merge_short_adjacent_nodes
 from bilicourseai.outline.prompts import (
     DIRECT_PART_OUTLINE_MAX_CHARS,
@@ -91,6 +91,7 @@ async def outline_report(
                 status="skeleton",
                 expandable=True,
                 depth=0,
+                source_part_page=part.page,
                 transcript=root_lines,
             )
             part.blocks.append(root)
@@ -185,6 +186,7 @@ async def outline_report(
                 status="skeleton",
                 expandable=bool(item.get("expandable", True)),
                 depth=0,
+                source_part_page=part.page,
                 transcript=lines_for_range(part.transcript, start, end),
                 **quality,
             )
@@ -224,6 +226,9 @@ def _sync_part_tree_node(report: VideoReport, part) -> bool:
     source_blocks = part.blocks
     if not source_blocks:
         return False
+    part_node.source_part_page = part.page
+    for block in source_blocks:
+        bind_block_to_part(block, part.page)
     if len(source_blocks) == 1:
         replacement = source_blocks[0]
         part_node.title = replacement.title

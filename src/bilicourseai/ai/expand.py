@@ -12,6 +12,7 @@ from bilicourseai.ai.common import find_report_block, find_report_part
 from bilicourseai.json_utils import best_effort_json_object as _best_effort_json_object
 from bilicourseai.llm_client import create_client as _client, extra_body as _extra_body
 from bilicourseai.models import KnowledgeBlock, NoteSection, VideoReport, VisualRequest
+from bilicourseai.outline.part_tree import bind_block_to_part
 from bilicourseai.outline.boundaries import apply_boundary_adjustments_to_blocks
 from bilicourseai.outline.quality import (
     MAX_LEAF_SECONDS,
@@ -99,6 +100,7 @@ async def expand_block(
                 status="skeleton",
                 expandable=bool(item.get("expandable", True)),
                 depth=block.depth + 1,
+                source_part_page=part.page,
                 transcript=lines_for_range(part.transcript, start, end),
                 **quality,
             )
@@ -172,6 +174,7 @@ async def expand_block(
             expandable=False,
             depth=block.depth + 1,
             transcript=block.transcript,
+            source_part_page=part.page,
         )
     ]
     block.summary = str(payload.get("notes") or payload.get("summary") or block.summary).strip()
@@ -269,12 +272,41 @@ def _part_for_block(report: VideoReport, target: KnowledgeBlock):
         part = find_report_part(report, target.source_part_page)
         if part is not None:
             return part
+    inferred_page = _infer_part_page_from_ancestors(report, target.id)
+    if inferred_page is not None:
+        part = find_report_part(report, inferred_page)
+        if part is not None:
+            bind_block_to_part(target, inferred_page)
+            return part
     for part in report.parts:
         for block in part.blocks:
             if block is target:
                 return part
             if _contains_block(block, target.id):
                 return part
+    return None
+
+
+def _infer_part_page_from_ancestors(report: VideoReport, block_id: str) -> int | None:
+    def visit(block: KnowledgeBlock, inherited_page: int | None) -> int | None:
+        current_page = block.source_part_page if block.source_part_page is not None else inherited_page
+        if block.id == block_id:
+            return current_page
+        for child in block.children:
+            found = visit(child, current_page)
+            if found is not None:
+                return found
+        return None
+
+    for part in report.parts:
+        if part.page == 0:
+            inherited_page = None
+        else:
+            inherited_page = part.page
+        for block in part.blocks:
+            found = visit(block, inherited_page)
+            if found is not None:
+                return found
     return None
 
 
