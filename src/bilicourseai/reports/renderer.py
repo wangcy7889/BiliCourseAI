@@ -64,6 +64,65 @@ def _visual_note_text(text: str, max_chars: int = 140) -> str:
     return text[: max_chars - 1].rstrip() + "..."
 
 
+def _is_part_outline_block(block: KnowledgeBlock) -> bool:
+    return (
+        block.source_part_page is not None
+        and block.id == f"part-p{block.source_part_page}"
+    )
+
+
+def _toc_action_label(block: KnowledgeBlock) -> str:
+    is_structure_node = block.node_type == "branch" or _is_part_outline_block(block)
+    if not is_structure_node:
+        return ""
+    if block.status == "skeleton":
+        return "展开划分"
+    if block.status == "expanded":
+        return "重做划分"
+    return ""
+
+
+def _body_action_label(block: KnowledgeBlock) -> str:
+    if _toc_action_label(block):
+        return ""
+    if block.node_type != "leaf":
+        return ""
+    if block.status == "skeleton":
+        return "展开为笔记"
+    if block.status == "expanded":
+        return "重做笔记"
+    return ""
+
+
+def _block_has_body_content(block: KnowledgeBlock) -> bool:
+    if block.node_type == "raw":
+        return False
+    has_note_content = bool(
+        block.summary
+        or block.key_points
+        or block.sections
+        or block.frames
+        or block.visual_requests
+        or block.visual_analyses
+        or _body_action_label(block)
+    )
+    if has_note_content and not _toc_action_label(block):
+        return True
+    return any(_block_has_body_content(child) for child in block.children)
+
+
+def _toc_has_link_target(block: KnowledgeBlock) -> bool:
+    return _block_has_body_content(block)
+
+
+def _part_has_body_content(part: VideoPart) -> bool:
+    return any(_block_has_body_content(block) for block in part.blocks)
+
+
+def _report_has_body_content(report: VideoReport) -> bool:
+    return any(_part_has_body_content(part) for part in report.parts)
+
+
 def _time_label(timestamp: float) -> str:
     total_seconds = max(0, int(float(timestamp or 0)))
     hours = total_seconds // 3600
@@ -524,7 +583,12 @@ def write_report_to_dir(report: VideoReport, report_dir: Path) -> ReportArtifact
         env.filters["visual_note_text"] = _visual_note_text
         env.filters["bilibili_time_url"] = _bilibili_time_url
         env.filters["time_label"] = _time_label
+        env.filters["toc_action_label"] = _toc_action_label
+        env.filters["body_action_label"] = _body_action_label
+        env.filters["report_has_body_content"] = _report_has_body_content
+        env.filters["toc_has_link_target"] = _toc_has_link_target
         env.tests["has_transcript"] = _part_has_transcript
+        env.tests["has_body_content"] = _part_has_body_content
         template = env.get_template("report.html.j2")
         html_path.write_text(template.render(report=report, report_dir=report_dir), encoding="utf-8")
 
