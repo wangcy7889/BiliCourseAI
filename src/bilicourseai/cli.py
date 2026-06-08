@@ -372,6 +372,7 @@ def outline(
         help="不调用 LLM，按分 P 生成初始树；可选 parts",
     ),
     max_outline_windows: int = typer.Option(0, "--max-outline-windows", help="最多处理多少个骨架窗口，0 表示不限"),
+    outline_concurrency: int = typer.Option(2, "--outline-concurrency", help="骨架窗口 LLM 并发数；1 表示串行"),
     base_url: str | None = typer.Option(None, "--base-url", help="OpenAI-compatible API base URL"),
     api_key: str | None = typer.Option(None, "--api-key", help="OpenAI-compatible API key"),
     text_base_url: str | None = typer.Option(None, "--text-base-url", help="文本模型 API base URL"),
@@ -425,6 +426,7 @@ def outline(
             part_page=part_page,
             max_windows=max_outline_windows,
             request_delay=llm_request_delay,
+            outline_concurrency=outline_concurrency,
             progress=_progress,
         )
         artifacts = write_report(report, output_dir)
@@ -490,6 +492,8 @@ def expand(
     text_model: str | None = typer.Option(None, "--text-model", help="文本模型名"),
     vision_model: str | None = typer.Option(None, "--vision-model", help="视觉模型名"),
     llm_request_delay: float = typer.Option(2.2, "--llm-request-delay", help="模型请求间隔秒数"),
+    frame_concurrency: int = typer.Option(2, "--frame-concurrency", help="截图/候选帧抓取并发数；1 表示串行"),
+    vision_concurrency: int = typer.Option(2, "--vision-concurrency", help="视觉模型请求并发数；1 表示串行"),
     enable_thinking: bool = typer.Option(False, "--enable-thinking/--disable-thinking", help="是否开启 thinking"),
 ) -> None:
     """Expand one selected outline node into child nodes or a leaf note."""
@@ -531,6 +535,8 @@ def expand(
             prefer_stream_frames=prefer_stream_frames,
             request_delay=llm_request_delay,
             report_dir=report_dir if output_dir is None else None,
+            frame_concurrency=frame_concurrency,
+            vision_concurrency=vision_concurrency,
             progress=typer.echo,
         )
 
@@ -575,6 +581,8 @@ def analyze(
         "--llm-request-delay",
         help="每次模型请求后的等待秒数；2.2 秒约等于低于 30 RPM",
     ),
+    frame_concurrency: int = typer.Option(2, "--frame-concurrency", help="截图抓取并发数；1 表示串行"),
+    vision_concurrency: int = typer.Option(2, "--vision-concurrency", help="视觉模型请求并发数；1 表示串行"),
     enable_thinking: bool = typer.Option(
         False,
         "--enable-thinking/--disable-thinking",
@@ -643,6 +651,7 @@ def analyze(
                 visual_requests,
                 output_dir,
                 prefer_stream=prefer_stream_frames,
+                concurrency=frame_concurrency,
             )
             ok_frames = [frame for frame in frames if not frame.error]
             typer.echo(f"Frames saved: {len(ok_frames)}/{len(frames)}")
@@ -652,6 +661,7 @@ def analyze(
                 llm_settings,
                 ok_frames,
                 request_delay=llm_request_delay,
+                concurrency=vision_concurrency,
             )
             typer.echo(f"Vision analyses: {len(analyses)}")
 
@@ -731,6 +741,9 @@ def serve(
         help="优先从真实视频流截高清帧",
     ),
     llm_request_delay: float = typer.Option(2.2, "--llm-request-delay", help="模型请求间隔秒数"),
+    outline_concurrency: int = typer.Option(2, "--outline-concurrency", help="交互展开分 P 划分时的 LLM 窗口并发数；1 表示串行"),
+    frame_concurrency: int = typer.Option(2, "--frame-concurrency", help="交互展开时截图/候选帧抓取并发数；1 表示串行"),
+    vision_concurrency: int = typer.Option(2, "--vision-concurrency", help="交互展开时视觉模型请求并发数；1 表示串行"),
 ) -> None:
     """Serve one report directory with local expand/redo actions."""
 
@@ -752,6 +765,9 @@ def serve(
         max_visual_requests=max_visual_requests,
         prefer_stream_frames=prefer_stream_frames,
         request_delay=llm_request_delay,
+        outline_concurrency=outline_concurrency,
+        frame_concurrency=frame_concurrency,
+        vision_concurrency=vision_concurrency,
     )
 
 

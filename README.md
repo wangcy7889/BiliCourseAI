@@ -370,6 +370,18 @@ bilicourse serve BVxxxxxxxxxx
 
 每次 LLM 请求之间的等待秒数。遇到 RPM 限制时可以调大。
 
+`--outline-concurrency 2`
+
+生成骨架时同一分 P 内的窗口并发数。`serve` 展开分 P 划分时也支持该参数。遇到模型限流时可调回 1。
+
+`--frame-concurrency 2`
+
+候选帧和最终帧抓取并发数。展开带图片节点时可缩短截图等待；如果 Bilibili 视频流或本机 ffmpeg 压力较大，可调回 1。
+
+`--vision-concurrency 2`
+
+视觉模型选帧和图片分析并发数。适合多张辅助理解图同时处理；如果服务端 RPM/TPM 较低，可调回 1 或增大 `--llm-request-delay`。
+
 `--disable-thinking`
 
 对支持该参数的模型传入 `enable_thinking=false`，通常能更快、更省。

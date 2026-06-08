@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 import shutil
 import subprocess
@@ -150,13 +151,19 @@ async def _capture_frame_artifact(
     videoshot_cache: dict[int, dict[str, Any]],
     stream_url_cache: dict[int, str],
     source_prefix: str = "",
+    cache_lock: asyncio.Lock | None = None,
 ) -> FrameArtifact:
     source = "videoshot"
     if prefer_stream:
         source = f"{source_prefix}stream" if source_prefix else "stream"
         if part.cid not in stream_url_cache:
-            stream_url_cache[part.cid] = await _fetch_stream_url(report.bvid, part.cid)
-        _capture_stream_frame(stream_url_cache[part.cid], timestamp, output_path)
+            if cache_lock is None:
+                stream_url_cache[part.cid] = await _fetch_stream_url(report.bvid, part.cid)
+            else:
+                async with cache_lock:
+                    if part.cid not in stream_url_cache:
+                        stream_url_cache[part.cid] = await _fetch_stream_url(report.bvid, part.cid)
+        await asyncio.to_thread(_capture_stream_frame, stream_url_cache[part.cid], timestamp, output_path)
         return FrameArtifact(
             request_id=request.id,
             part_page=part.page,
@@ -167,7 +174,12 @@ async def _capture_frame_artifact(
         )
 
     if part.cid not in videoshot_cache:
-        videoshot_cache[part.cid] = await _fetch_videoshot(report.bvid, part.cid)
+        if cache_lock is None:
+            videoshot_cache[part.cid] = await _fetch_videoshot(report.bvid, part.cid)
+        else:
+            async with cache_lock:
+                if part.cid not in videoshot_cache:
+                    videoshot_cache[part.cid] = await _fetch_videoshot(report.bvid, part.cid)
     payload = videoshot_cache[part.cid]
     data = payload.get("data") or {}
     images = data.get("image") or []
@@ -203,19 +215,21 @@ async def capture_requested_frames(
     output_dir: Path,
     prefer_stream: bool = True,
     report_dir: Path | None = None,
+    concurrency: int = 1,
 ) -> list[FrameArtifact]:
     frames_dir = (report_dir or report_dir_for(report, output_dir)) / "frames"
     frames_dir.mkdir(parents=True, exist_ok=True)
 
-    frames: list[FrameArtifact] = []
     videoshot_cache: dict[int, dict[str, Any]] = {}
     stream_url_cache: dict[int, str] = {}
+    cache_lock = asyncio.Lock()
+    semaphore = asyncio.Semaphore(max(1, concurrency))
 
-    for request in requests:
+    async def capture_one(request: VisualRequest) -> tuple[FrameArtifact, Any, Any]:
         part = _find_part(report, request.part_page)
         block = _find_block(report, request.block_id)
         if not part or not block:
-            frames.append(
+            return (
                 FrameArtifact(
                     request_id=request.id,
                     part_page=request.part_page,
@@ -224,41 +238,46 @@ async def capture_requested_frames(
                     path="",
                     source="videoshot",
                     error="Part or block not found.",
+                ),
+                None,
+                None,
+            )
+        timestamp_slug = _timestamp_slug(request.timestamp)
+        suffix = "_stream" if prefer_stream else ""
+        output_path = frames_dir / f"{request.id}_p{part.page}_{timestamp_slug}s{suffix}.jpg"
+        async with semaphore:
+            try:
+                frame = await _capture_frame_artifact(
+                    report,
+                    request,
+                    part,
+                    request.timestamp,
+                    output_path,
+                    prefer_stream,
+                    videoshot_cache,
+                    stream_url_cache,
+                    cache_lock=cache_lock,
                 )
-            )
-            continue
+            except Exception as exc:
+                frame = FrameArtifact(
+                    request_id=request.id,
+                    part_page=part.page,
+                    block_id=request.block_id,
+                    timestamp=request.timestamp,
+                    path=str(output_path),
+                    source="videoshot",
+                    error=str(exc),
+                )
+        return frame, block, _find_section(block, request.section_id)
 
-        try:
-            timestamp_slug = _timestamp_slug(request.timestamp)
-            suffix = "_stream" if prefer_stream else ""
-            output_path = frames_dir / f"{request.id}_p{part.page}_{timestamp_slug}s{suffix}.jpg"
-            frame = await _capture_frame_artifact(
-                report,
-                request,
-                part,
-                request.timestamp,
-                output_path,
-                prefer_stream,
-                videoshot_cache,
-                stream_url_cache,
-            )
+    results = await asyncio.gather(*(capture_one(request) for request in requests))
+    frames: list[FrameArtifact] = []
+    for frame, block, section in results:
+        if block is not None:
             block.frames.append(frame)
-            section = _find_section(block, request.section_id)
             if section is not None:
                 section.frames.append(frame)
-            frames.append(frame)
-        except Exception as exc:
-            frame = FrameArtifact(
-                request_id=request.id,
-                part_page=part.page,
-                block_id=request.block_id,
-                timestamp=request.timestamp,
-                path=str(output_path),
-                source="videoshot",
-                error=str(exc),
-            )
-            block.frames.append(frame)
-            frames.append(frame)
+        frames.append(frame)
 
     return frames
 
@@ -269,14 +288,52 @@ async def capture_candidate_frames(
     output_dir: Path,
     prefer_stream: bool = True,
     report_dir: Path | None = None,
+    concurrency: int = 1,
 ) -> dict[str, list[FrameArtifact]]:
     frames_dir = (report_dir or report_dir_for(report, output_dir)) / "frames" / "_candidates"
     frames_dir.mkdir(parents=True, exist_ok=True)
 
     videoshot_cache: dict[int, dict[str, Any]] = {}
     stream_url_cache: dict[int, str] = {}
+    cache_lock = asyncio.Lock()
+    semaphore = asyncio.Semaphore(max(1, concurrency))
     by_request: dict[str, list[FrameArtifact]] = {}
 
+    async def capture_one(
+        request: VisualRequest,
+        part,
+        timestamp: float,
+        index: int,
+    ) -> FrameArtifact:
+        timestamp_slug = _timestamp_slug(timestamp)
+        suffix = "_stream" if prefer_stream else ""
+        output_path = frames_dir / f"{request.id}_c{index}_p{part.page}_{timestamp_slug}s{suffix}.jpg"
+        async with semaphore:
+            try:
+                return await _capture_frame_artifact(
+                    report,
+                    request,
+                    part,
+                    timestamp,
+                    output_path,
+                    prefer_stream,
+                    videoshot_cache,
+                    stream_url_cache,
+                    source_prefix="candidate_",
+                    cache_lock=cache_lock,
+                )
+            except Exception as exc:
+                return FrameArtifact(
+                    request_id=request.id,
+                    part_page=part.page,
+                    block_id=request.block_id,
+                    timestamp=timestamp,
+                    path=str(output_path),
+                    source="candidate",
+                    error=str(exc),
+                )
+
+    jobs: list[tuple[str, asyncio.Task[FrameArtifact]]] = []
     for request in requests:
         part = _find_part(report, request.part_page)
         block = _find_block(report, request.block_id)
@@ -297,35 +354,9 @@ async def capture_candidate_frames(
             )
             continue
         for index, timestamp in enumerate(timestamps, start=1):
-            timestamp_slug = _timestamp_slug(timestamp)
-            suffix = "_stream" if prefer_stream else ""
-            output_path = frames_dir / f"{request.id}_c{index}_p{part.page}_{timestamp_slug}s{suffix}.jpg"
-            try:
-                artifacts.append(
-                    await _capture_frame_artifact(
-                        report,
-                        request,
-                        part,
-                        timestamp,
-                        output_path,
-                        prefer_stream,
-                        videoshot_cache,
-                        stream_url_cache,
-                        source_prefix="candidate_",
-                    )
-                )
-            except Exception as exc:
-                artifacts.append(
-                    FrameArtifact(
-                        request_id=request.id,
-                        part_page=part.page,
-                        block_id=request.block_id,
-                        timestamp=timestamp,
-                        path=str(output_path),
-                        source="candidate",
-                        error=str(exc),
-                    )
-                )
+            jobs.append((request.id, asyncio.create_task(capture_one(request, part, timestamp, index))))
+    for request_id, task in jobs:
+        by_request[request_id].append(await task)
     return by_request
 
 

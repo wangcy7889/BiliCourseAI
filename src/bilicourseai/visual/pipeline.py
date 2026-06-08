@@ -96,6 +96,8 @@ async def run_visual_pipeline(
     request_delay: float = 0.0,
     progress: ProgressCallback | None = None,
     max_choice_rounds: int = MAX_VISUAL_CHOICE_ROUNDS,
+    frame_concurrency: int = 1,
+    vision_concurrency: int = 1,
 ) -> dict[str, Any]:
     if not isinstance(report, VideoReport):
         raise TypeError(f"run_visual_pipeline expected VideoReport for report, got {type(report).__name__}")
@@ -129,6 +131,7 @@ async def run_visual_pipeline(
                 output_dir,
                 prefer_stream=prefer_stream_frames,
                 report_dir=report_dir,
+                concurrency=frame_concurrency,
             )
             round_choices = await choose_visual_frames(
                 report,
@@ -136,6 +139,7 @@ async def run_visual_pipeline(
                 pending_requests,
                 candidates,
                 request_delay=request_delay,
+                concurrency=vision_concurrency,
             )
             retry_requests = [request for request in round_choices if request.candidate_timestamps]
             stable_requests = [request for request in round_choices if not request.candidate_timestamps]
@@ -175,12 +179,19 @@ async def run_visual_pipeline(
             output_dir,
             prefer_stream=prefer_stream_frames,
             report_dir=report_dir,
+            concurrency=frame_concurrency,
         )
         ok_frames = [frame for frame in frames if not frame.error]
         frames_count = len(ok_frames)
         if progress:
             progress(f"Final frames saved: {len(ok_frames)}/{len(frames)}")
-        analyses = await analyze_frames(report, settings, ok_frames, request_delay=request_delay)
+        analyses = await analyze_frames(
+            report,
+            settings,
+            ok_frames,
+            request_delay=request_delay,
+            concurrency=vision_concurrency,
+        )
         analyses_count = len(analyses)
         if progress:
             progress(f"Vision analyses: {len(analyses)}")

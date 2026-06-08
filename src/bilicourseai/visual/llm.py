@@ -32,6 +32,7 @@ async def analyze_frames(
     settings: LLMSettings,
     frames: list[FrameArtifact],
     request_delay: float = 0.0,
+    concurrency: int = 1,
 ) -> list[VisualAnalysis]:
     if not frames:
         return []
@@ -39,14 +40,15 @@ async def analyze_frames(
         report.llm_notes.append("Vision model not configured; frames were saved without visual analysis.")
         return []
 
-    analyses: list[VisualAnalysis] = []
     client = _client(settings, role="vision")
-    for frame in frames:
+    semaphore = asyncio.Semaphore(max(1, concurrency))
+
+    async def analyze_one(frame: FrameArtifact) -> tuple[VisualAnalysis | None, Any, Any, str | None]:
         if frame.error:
-            continue
+            return None, None, None, None
         block = _find_block(report, frame.block_id)
         if not block:
-            continue
+            return None, None, None, None
         request = next(
             (item for item in block.visual_requests if item.id == frame.request_id),
             None,
@@ -97,26 +99,26 @@ async def analyze_frames(
                 "confidence": "low|medium|high",
             },
         }
-        try:
-            response = await client.chat.completions.create(
-                model=settings.vision_model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": json.dumps(prompt, ensure_ascii=False)},
-                            {"type": "image_url", "image_url": {"url": _image_data_url(image_path)}},
-                        ],
-                    }
-                ],
-                temperature=0.2,
-                extra_body=_extra_body(settings),
-            )
-        except OpenAIError as exc:
-            report.llm_notes.append(
-                f"Vision analysis stopped after {len(analyses)} frames: {exc}"
-            )
-            return analyses
+        async with semaphore:
+            try:
+                response = await client.chat.completions.create(
+                    model=settings.vision_model,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": json.dumps(prompt, ensure_ascii=False)},
+                                {"type": "image_url", "image_url": {"url": _image_data_url(image_path)}},
+                            ],
+                        }
+                    ],
+                    temperature=0.2,
+                    extra_body=_extra_body(settings),
+                )
+                if request_delay > 0:
+                    await asyncio.sleep(request_delay)
+            except OpenAIError as exc:
+                return None, None, None, f"Vision analysis failed for {frame.request_id}: {exc}"
         content = response.choices[0].message.content or "{}"
         payload = _best_effort_json_object(content)
         fallback_summary = content.strip()
@@ -143,15 +145,26 @@ async def analyze_frames(
             ],
             confidence=str(payload.get("confidence") or "unknown").strip(),
         )
-        block.visual_analyses.append(analysis)
+        section = None
         if request and request.section_id:
-            for section in block.sections:
-                if section.id == request.section_id:
-                    section.visual_analyses.append(analysis)
+            for item in block.sections:
+                if item.id == request.section_id:
+                    section = item
                     break
+        return analysis, block, section, None
+
+    results = await asyncio.gather(*(analyze_one(frame) for frame in frames))
+    analyses: list[VisualAnalysis] = []
+    for analysis, block, section, error in results:
+        if error:
+            report.llm_notes.append(error)
+            continue
+        if analysis is None or block is None:
+            continue
+        block.visual_analyses.append(analysis)
+        if section is not None:
+            section.visual_analyses.append(analysis)
         analyses.append(analysis)
-        if request_delay > 0:
-            await asyncio.sleep(request_delay)
 
     report.llm_notes.append(f"Vision model analyzed {len(analyses)} frames.")
     return analyses
@@ -163,6 +176,7 @@ async def choose_visual_frames(
     requests: list[VisualRequest],
     candidates_by_request: dict[str, list[FrameArtifact]],
     request_delay: float = 0.0,
+    concurrency: int = 1,
 ) -> list[VisualRequest]:
     if not requests:
         return []
@@ -170,8 +184,9 @@ async def choose_visual_frames(
         return requests
 
     client = _client(settings, role="vision")
-    chosen: list[VisualRequest] = []
-    for request in requests:
+    semaphore = asyncio.Semaphore(max(1, concurrency))
+
+    async def choose_one(request: VisualRequest) -> tuple[VisualRequest | None, str | None]:
         block = _find_block(report, request.block_id)
         candidates = [
             frame
@@ -179,8 +194,7 @@ async def choose_visual_frames(
             if frame.path and not frame.error
         ]
         if not block or not candidates:
-            chosen.append(request)
-            continue
+            return request, None
 
         prompt = {
             "task": (
@@ -223,23 +237,23 @@ async def choose_visual_frames(
             content.append({"type": "text", "text": f"candidate_index={index}, timestamp={frame.timestamp:.3f}s"})
             content.append({"type": "image_url", "image_url": {"url": _image_data_url(Path(frame.path))}})
 
-        try:
-            response = await client.chat.completions.create(
-                model=settings.vision_model,
-                messages=[{"role": "user", "content": content}],
-                temperature=0.1,
-                extra_body=_extra_body(settings),
-            )
-        except OpenAIError as exc:
-            report.llm_notes.append(f"Visual frame choice failed for {request.id}: {exc}")
-            chosen.append(request)
-            continue
+        async with semaphore:
+            try:
+                response = await client.chat.completions.create(
+                    model=settings.vision_model,
+                    messages=[{"role": "user", "content": content}],
+                    temperature=0.1,
+                    extra_body=_extra_body(settings),
+                )
+                if request_delay > 0:
+                    await asyncio.sleep(request_delay)
+            except OpenAIError as exc:
+                return request, f"Visual frame choice failed for {request.id}: {exc}"
 
         payload = _best_effort_json_object(response.choices[0].message.content or "{}")
         decision = str(payload.get("decision") or "").strip()
         if decision == "skip":
-            report.llm_notes.append(f"Skipped visual request {request.id}: {payload.get('reason') or ''}")
-            continue
+            return None, f"Skipped visual request {request.id}: {payload.get('reason') or ''}"
         if decision == "retry_timestamp":
             timestamp = max(block.start, min(block.end, float(payload.get("timestamp") or request.timestamp)))
             candidate_timestamps = visual_candidate_timestamps(block.start, block.end, timestamp)
@@ -248,7 +262,7 @@ async def choose_visual_frames(
             index = max(1, min(len(candidates), index))
             timestamp = candidates[index - 1].timestamp
             candidate_timestamps = []
-        chosen.append(
+        return (
             VisualRequest(
                 id=request.id,
                 part_page=request.part_page,
@@ -258,10 +272,17 @@ async def choose_visual_frames(
                 reason=request.reason,
                 prompt=request.prompt,
                 section_id=request.section_id,
-            )
+            ),
+            None,
         )
-        if request_delay > 0:
-            await asyncio.sleep(request_delay)
+
+    results = await asyncio.gather(*(choose_one(request) for request in requests))
+    chosen: list[VisualRequest] = []
+    for request, note in results:
+        if note:
+            report.llm_notes.append(note)
+        if request is not None:
+            chosen.append(request)
 
     report.llm_notes.append(f"Vision model selected {len(chosen)} final visual frames from candidates.")
     return chosen

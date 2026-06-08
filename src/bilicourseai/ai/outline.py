@@ -43,6 +43,7 @@ async def outline_report(
     part_page: int | None = None,
     max_windows: int = 0,
     request_delay: float = 0.0,
+    outline_concurrency: int = 1,
     progress: Callable[[str], None] | None = None,
 ) -> None:
     def emit(message: str) -> None:
@@ -130,8 +131,7 @@ async def outline_report(
                     await asyncio.sleep(request_delay)
 
             guidance = root_node_count_guidance(part, part_plan=part_plan)
-            candidates: list[dict[str, Any]] = []
-            for window_index, window in enumerate(part_windows, start=1):
+            async def outline_one_window(window_index: int, window: dict[str, Any]) -> list[dict[str, Any]]:
                 emit(
                     f"P{page}: LLM outline window {window_index}/{len(part_windows)} "
                     f"({float(window['start']):.1f}s-{float(window['end']):.1f}s)"
@@ -145,13 +145,35 @@ async def outline_report(
                 )
                 if request_delay > 0:
                     await asyncio.sleep(request_delay)
+                window_candidates: list[dict[str, Any]] = []
                 for item in payload.get("candidates", payload.get("children", [])):
                     if not isinstance(item, dict):
                         continue
                     item["source_window_id"] = f"p{page}-w{window_index}"
                     item["source_window_start"] = window["start"]
                     item["source_window_end"] = window["end"]
-                    candidates.append(item)
+                    window_candidates.append(item)
+                return window_candidates
+
+            candidates: list[dict[str, Any]] = []
+            if outline_concurrency <= 1 or len(part_windows) <= 1:
+                for window_index, window in enumerate(part_windows, start=1):
+                    candidates.extend(await outline_one_window(window_index, window))
+            else:
+                semaphore = asyncio.Semaphore(max(1, outline_concurrency))
+
+                async def guarded_outline_one_window(window_index: int, window: dict[str, Any]) -> list[dict[str, Any]]:
+                    async with semaphore:
+                        return await outline_one_window(window_index, window)
+
+                results = await asyncio.gather(
+                    *(
+                        guarded_outline_one_window(window_index, window)
+                        for window_index, window in enumerate(part_windows, start=1)
+                    )
+                )
+                for window_candidates in results:
+                    candidates.extend(window_candidates)
 
             emit(
                 f"P{page}: reducing {len(candidates)} candidates "

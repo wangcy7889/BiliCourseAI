@@ -54,6 +54,9 @@ async def _expand_current_block(
     max_visual_requests: int,
     prefer_stream_frames: bool,
     request_delay: float,
+    outline_concurrency: int,
+    frame_concurrency: int,
+    vision_concurrency: int,
 ) -> dict[str, Any]:
     block = find_block(report, block_id)
     if block is not None and is_part_outline_root_node(report, block) and not block.children and not block.sections:
@@ -63,6 +66,7 @@ async def _expand_current_block(
             settings,
             part_page=block.source_part_page,
             request_delay=request_delay,
+            outline_concurrency=outline_concurrency,
             progress=lambda message: _log(f"{block_id}: {message}"),
         )
         _log(f"{block_id}: outline done")
@@ -87,6 +91,8 @@ async def _expand_current_block(
         report_dir=report_dir,
         prefer_stream_frames=prefer_stream_frames,
         request_delay=request_delay,
+        frame_concurrency=frame_concurrency,
+        vision_concurrency=vision_concurrency,
         progress=lambda message: _log(f"{block_id}: {message}"),
     )
 
@@ -98,6 +104,9 @@ def create_report_app(
     max_visual_requests: int = 4,
     prefer_stream_frames: bool = True,
     request_delay: float = 2.2,
+    outline_concurrency: int = 1,
+    frame_concurrency: int = 1,
+    vision_concurrency: int = 1,
 ) -> web.Application:
     report_dir = report_dir.resolve()
     output_dir = output_dir or output_dir_for_report_dir(report_dir, DEFAULT_DATA_DIR)
@@ -199,6 +208,9 @@ def create_report_app(
                     max_visual_requests=max_visual_requests,
                     prefer_stream_frames=prefer_stream_frames,
                     request_delay=request_delay,
+                    outline_concurrency=outline_concurrency,
+                    frame_concurrency=frame_concurrency,
+                    vision_concurrency=vision_concurrency,
                 )
                 artifacts = write_report_to_dir(report, report_dir)
                 elapsed = time.monotonic() - started
@@ -244,6 +256,9 @@ def run_report_server(
     max_visual_requests: int = 4,
     prefer_stream_frames: bool = True,
     request_delay: float = 2.2,
+    outline_concurrency: int = 1,
+    frame_concurrency: int = 1,
+    vision_concurrency: int = 1,
 ) -> None:
     _log(f"Serving report: {report_dir.resolve()}")
     _log(f"Open: http://{host}:{port}/")
@@ -253,5 +268,8 @@ def run_report_server(
         max_visual_requests=max_visual_requests,
         prefer_stream_frames=prefer_stream_frames,
         request_delay=request_delay,
+        outline_concurrency=outline_concurrency,
+        frame_concurrency=frame_concurrency,
+        vision_concurrency=vision_concurrency,
     )
     web.run_app(app, host=host, port=port, print=None)
