@@ -1,10 +1,23 @@
-# BiliCourseAI
+<div align="center">
+  <h1>BiliCourseAI | AI 课程视频学习报告助手</h1>
+  <h3>课程树生成 · 关键帧理解 · 本地交互笔记</h3>
+</div>
 
-BiliCourseAI 是一个面向 Bilibili 课程视频的 AI 辅助学习报告 CLI 原型。
+**面向 Bilibili 课程视频的一站式 AI 学习报告 CLI：抓取视频/分 P 元数据与字幕，生成课程知识树，自动截取关键画面并调用多模态模型分析课件、公式、板书或图表，最终输出可浏览、可继续展开的本地学习报告。**
 
-它只分析视频本体：标题、分 P、字幕、时间轴、关键截图和视觉理解；不处理弹幕、评论、相关推荐。
+<div align="center">
 
-当前项目仍处于原型阶段，适合本地研究、课程笔记生成和交互式节点展开。
+![BiliBili](https://img.shields.io/badge/BiliBili-课程视频-FF6699?style=for-the-badge&logo=bilibili&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![CLI](https://img.shields.io/badge/CLI-Typer-222222?style=for-the-badge)
+![LLM](https://img.shields.io/badge/LLM-OpenAI--compatible-10A37F?style=for-the-badge&logo=openai&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge)
+
+[功能概览](#功能概览) • [项目截图](#项目截图) • [快速开始](#从零生成一个报告) • [配置 LLM](#配置-llm) • [排错](#排错)
+
+</div>
+
+BiliCourseAI 当前仍处于原型阶段，适合本地研究、课程笔记生成和交互式节点展开。它只分析视频本体：标题、分 P、字幕、时间轴、关键截图和视觉理解；不处理弹幕、评论、相关推荐。
 
 ## 功能概览
 

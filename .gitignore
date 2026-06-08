@@ -15,6 +15,7 @@ dist/
 # Local environments
 .conda/
 .venv/
+.codex/
 venv/
 env/
 
