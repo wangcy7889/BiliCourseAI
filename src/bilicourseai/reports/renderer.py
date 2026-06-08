@@ -569,6 +569,10 @@ def write_report_to_dir(report: VideoReport, report_dir: Path) -> ReportArtifact
     )
 
     with as_file(TEMPLATE_RESOURCE) as template_dir:
+        for asset_name in ("report.css", "report.js"):
+            source = template_dir / asset_name
+            if source.exists():
+                (report_dir / asset_name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
         env = Environment(
             loader=FileSystemLoader(template_dir),
             autoescape=select_autoescape(["html", "xml"]),
