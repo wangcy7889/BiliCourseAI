@@ -13,7 +13,7 @@
 ![LLM](https://img.shields.io/badge/LLM-OpenAI--compatible-10A37F?style=for-the-badge&logo=openai&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge)
 
-[功能概览](#功能概览) • [技术栈](#技术栈) • [项目截图](#项目截图) • [快速开始](#从零生成一个报告) • [配置 LLM](#配置-llm) • [排错](#排错) • [致谢](#致谢)
+[功能概览](#功能概览) • [项目截图](#项目截图) • [快速开始](#从零生成一个报告) • [配置 LLM](#配置-llm) • [排错](#排错) • [致谢](#致谢)
 
 </div>
 
@@ -28,22 +28,6 @@ BiliCourseAI 当前仍处于原型阶段，适合本地研究、课程笔记生�
 - 自动截取辅助理解图，并调用视觉模型分析课件、公式、板书或图表
 - 输出本地 `report.json` 与可浏览的 `report.html`
 - 本地 `serve` 模式支持网页内展开/重做
-
-## 技术栈
-
-BiliCourseAI 是一个偏本地化的 Python CLI 原型，核心链路由“B 站数据抓取 → 字幕/时间轴整理 → LLM 结构化生成 → 关键帧截取与视觉理解 → 本地 HTML 报告”组成。
-
-| 模块 | 技术选型 | 用途 |
-| --- | --- | --- |
-| 命令行入口 | Python 3.11+、Typer | 提供 `bilicourse auth/config/probe/outline/expand/analyze/serve` 等命令 |
-| Bilibili 数据源 | bilibili-api-python、aiohttp | 获取视频信息、分 P、字幕轨道、字幕内容和视频流相关数据 |
-| LLM 接入 | OpenAI Python SDK、OpenAI-compatible API | 调用文本模型生成课程树/学习笔记，调用视觉模型分析关键帧 |
-| 数据建模 | Pydantic v2 | 定义 `VideoReport`、`VideoPart`、`KnowledgeBlock`、`VisualRequest` 等报告结构 |
-| 字幕与知识树处理 | 自研分段、句读、窗口切分与质量门逻辑 | 整理字幕时间轴，生成可递归展开的课程知识树 |
-| 关键帧处理 | imageio-ffmpeg、Pillow | 从视频流或候选截图中截取学习辅助画面 |
-| 报告渲染 | Jinja2、HTML/CSS/JavaScript、MathJax | 输出可浏览的 `report.html`，支持目录折叠、公式、表格和节点操作 |
-| 本地交互服务 | aiohttp.web | `bilicourse serve` 启动本地服务，支持网页内展开/重做节点 |
-| 打包构建 | Hatchling、pyproject.toml | 管理包元数据、依赖和 `bilicourse` CLI 入口 |
 
 ## 项目截图
 
@@ -465,3 +449,4 @@ bilicourse serve --help
 
 - [bilibili-api-python](https://github.com/Nemo2011/bilibili-api) - 强大的 B 站 API 封装库。
 - [TokenLab](https://tokenlab.cc.cd) - 感谢 TokenLab 的大力支持！
+- [SDU 智创模型广场](https://xplt.sdu.edu.cn/llm/) - 提供山东大学本地化部署模型以及合作提供商提供的大模型调用服务
