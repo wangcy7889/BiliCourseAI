@@ -307,12 +307,14 @@
     .summary pre,
     .note-section-body pre,
     .visual-note-body pre {
+      position: relative;
       overflow: auto;
       margin: 10px 0 12px;
-      padding: 10px;
+      padding: 12px;
       border-radius: 6px;
-      background: var(--accent);
-      color: #f8fbfa;
+      border: 1px solid color-mix(in srgb, var(--line), var(--accent) 18%);
+      background: color-mix(in srgb, var(--code-bg), white 52%);
+      color: var(--ink);
     }
     .summary pre code,
     .note-section-body pre code,
@@ -324,6 +326,27 @@
       font-size: 13px;
       line-height: 1.55;
       white-space: pre;
+    }
+    .summary pre[data-language],
+    .note-section-body pre[data-language],
+    .visual-note-body pre[data-language] {
+      padding-right: 72px;
+    }
+    .summary pre[data-language]::before,
+    .note-section-body pre[data-language]::before,
+    .visual-note-body pre[data-language]::before {
+      content: attr(data-language);
+      position: absolute;
+      top: 7px;
+      right: 9px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: color-mix(in srgb, white, var(--accent-soft) 48%);
+      color: var(--muted);
+      font-family: Inter, system-ui, sans-serif;
+      font-size: 11px;
+      line-height: 1.4;
+      letter-spacing: 0;
     }
     .summary table,
     .note-section-body table,

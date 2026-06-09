@@ -37,6 +37,9 @@ BiliCourseAI 生成的报告采用左右分栏布局：左侧是自动生成的�
 
 ![](images/deeplearning.png)
 
+### 考研数学：武忠祥《严选题》强化篇节选
+
+![](images/math.png)
 
 ### 离散数学：公式推导与证明笔记
 

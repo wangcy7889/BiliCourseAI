@@ -21,14 +21,92 @@
       if (event.key === 'Escape') closeLightbox();
     });
 
-    const toggleTocNode = (button) => {
+    const toc = document.querySelector('.toc');
+    const tocStateKey = `bilicourse:toc:${window.location.origin}${window.location.pathname}:${document.title}`;
+
+    function findTocLinkForHash(hash) {
+      if (!hash) return null;
+      return Array.from(document.querySelectorAll('.toc a[href^="#"]'))
+        .find((link) => link.getAttribute('href') === hash) || null;
+    }
+
+    function readTocState() {
+      try {
+        return JSON.parse(window.sessionStorage.getItem(tocStateKey) || '{}');
+      } catch (error) {
+        return {};
+      }
+    }
+
+    function saveTocState() {
+      if (!toc) return;
+      const expanded = Array.from(document.querySelectorAll('.toc-toggle[aria-expanded="true"]'))
+        .map((button) => button.getAttribute('aria-controls'))
+        .filter(Boolean);
+      window.sessionStorage.setItem(tocStateKey, JSON.stringify({
+        expanded,
+        scrollTop: toc.scrollTop
+      }));
+    }
+
+    const toggleTocNode = (button, forceExpanded = null, persist = true) => {
       const children = document.getElementById(button.getAttribute('aria-controls'));
       if (!children) return;
-      const expanded = button.getAttribute('aria-expanded') === 'true';
-      button.setAttribute('aria-expanded', expanded ? 'false' : 'true');
-      button.setAttribute('aria-label', `${expanded ? '展开' : '收起'} ${button.closest('.toc-row')?.querySelector('.toc-node-link')?.textContent?.trim() || '目录节点'}`);
-      children.hidden = expanded;
+      const isExpanded = button.getAttribute('aria-expanded') === 'true';
+      const nextExpanded = forceExpanded === null ? !isExpanded : Boolean(forceExpanded);
+      button.setAttribute('aria-expanded', nextExpanded ? 'true' : 'false');
+      button.setAttribute('aria-label', `${nextExpanded ? '收起' : '展开'} ${button.closest('.toc-row')?.querySelector('.toc-node-link')?.textContent?.trim() || '目录节点'}`);
+      children.hidden = !nextExpanded;
+      if (persist) saveTocState();
     };
+
+    function restoreTocState() {
+      const state = readTocState();
+      const expanded = new Set(Array.isArray(state.expanded) ? state.expanded : []);
+      document.querySelectorAll('.toc-toggle').forEach((button) => {
+        if (expanded.has(button.getAttribute('aria-controls'))) {
+          toggleTocNode(button, true, false);
+        }
+      });
+    }
+
+    function expandTocAncestorsForHash() {
+      const link = findTocLinkForHash(window.location.hash);
+      if (!link) return null;
+      let node = link.closest('.toc-node') || link.closest('.toc-part');
+      while (node) {
+        const children = node.parentElement;
+        if (children && children.classList.contains('toc-children')) {
+          const button = document.querySelector(`.toc-toggle[aria-controls="${children.id}"]`);
+          if (button) toggleTocNode(button, true, false);
+        }
+        node = children ? children.closest('.toc-node') || children.closest('.toc-part') : null;
+      }
+      return link;
+    }
+
+    function restoreTocScroll(targetLink) {
+      if (!toc) return;
+      const state = readTocState();
+      window.requestAnimationFrame(() => {
+        if (typeof state.scrollTop === 'number') {
+          toc.scrollTop = state.scrollTop;
+        } else if (targetLink) {
+          targetLink.scrollIntoView({ block: 'center', inline: 'nearest' });
+        }
+      });
+    }
+
+    restoreTocState();
+    const hashTocTarget = expandTocAncestorsForHash();
+    restoreTocScroll(hashTocTarget);
+    window.addEventListener('pagehide', saveTocState);
+    window.addEventListener('hashchange', () => {
+      const target = expandTocAncestorsForHash();
+      restoreTocScroll(target);
+      saveTocState();
+    });
+
     document.querySelectorAll('.toc-toggle').forEach((button) => {
       button.addEventListener('click', () => toggleTocNode(button));
     });
@@ -87,6 +165,7 @@
           if (globalActionStatus) {
             globalActionStatus.textContent = '后端处理完成，正在刷新...';
           }
+          saveTocState();
           window.location.reload();
           return;
         }
@@ -143,6 +222,7 @@
             throw new Error(payload.error || payload.message || response.statusText || '请求失败');
           }
           setNodeStatus(status, '完成，正在刷新...');
+          saveTocState();
           window.location.reload();
         } catch (error) {
           setNodeStatus(status, `失败：${error.message}`);

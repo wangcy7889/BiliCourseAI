@@ -262,8 +262,19 @@ def _escape_unmatched_math_dollars(text: str) -> str:
             continue
         previous_char = text[index - 1] if index else ""
         next_char = text[index + 1] if index + 1 < len(text) else ""
-        can_open = not in_inline_math and next_char and not next_char.isspace() and previous_char not in "$\\"
-        can_close = in_inline_math and previous_char and not previous_char.isspace() and next_char not in "$"
+        can_open = (
+            not in_inline_math
+            and next_char
+            and not next_char.isspace()
+            and not next_char.isdigit()
+            and (not previous_char or previous_char not in "$\\")
+        )
+        can_close = (
+            in_inline_math
+            and previous_char
+            and not previous_char.isspace()
+            and (not next_char or next_char not in "$")
+        )
         if can_open or can_close:
             in_inline_math = not in_inline_math
             result.append("$")
@@ -363,6 +374,7 @@ def _md_html(text: str) -> Markup:
     list_stack: list[str] = []
     paragraph: list[str] = []
     in_code = False
+    code_language = ""
     code_lines: list[str] = []
 
     def close_lists() -> None:
@@ -469,19 +481,37 @@ def _md_html(text: str) -> Markup:
         html.append("</table>")
         return index
 
+    def normalize_code_language(value: str) -> tuple[str, str]:
+        parts = (value or "").strip().split(None, 1)
+        language = parts[0].lower() if parts else ""
+        language = re.sub(r"[^a-z0-9_+#.-]", "", language)
+        css_name = re.sub(r"[^a-z0-9_-]", "-", language)
+        return language, css_name
+
+    def render_code_block(language: str, values: list[str]) -> str:
+        code_text = "\n".join(values)
+        label, css_name = normalize_code_language(language)
+        class_attr = "code-block"
+        data_attr = ""
+        if label and css_name:
+            class_attr = f"{class_attr} language-{css_name}"
+            data_attr = f' data-language="{escape(label)}"'
+        return f'<pre class="{class_attr}"{data_attr}><code>{escape(code_text)}</code></pre>'
+
     line_index = 0
     while line_index < len(lines):
         raw_line = lines[line_index]
         line = raw_line.strip()
         if line.startswith("```"):
             if in_code:
-                code_text = "\n".join(code_lines)
-                html.append(f"<pre><code>{escape(code_text)}</code></pre>")
+                html.append(render_code_block(code_language, code_lines))
                 code_lines.clear()
+                code_language = ""
                 in_code = False
             else:
                 flush_paragraph()
                 close_lists()
+                code_language = line[3:].strip()
                 in_code = True
             line_index += 1
             continue
@@ -548,8 +578,7 @@ def _md_html(text: str) -> Markup:
         line_index += 1
 
     if in_code:
-        code_text = "\n".join(code_lines)
-        html.append(f"<pre><code>{escape(code_text)}</code></pre>")
+        html.append(render_code_block(code_language, code_lines))
     flush_paragraph()
     close_lists()
 
