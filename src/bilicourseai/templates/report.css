@@ -65,10 +65,10 @@
       top: 16px;
       max-height: calc(100vh - 32px);
       overflow: auto;
-      --toc-toggle-column: 22px;
-      --toc-toggle-size: 18px;
-      --toc-toggle-center: 12px;
-      --toc-child-indent: 8px;
+      --toc-toggle-column: 20px;
+      --toc-toggle-size: 20px;
+      --toc-toggle-center: 10px;
+      --toc-child-indent: 3px;
       padding: 16px;
       background: var(--panel);
       border: 1px solid var(--line);
@@ -111,8 +111,12 @@
       row-gap: 4px;
     }
     .toc-toggle {
-      width: var(--toc-toggle-size);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: var(--toc-toggle-column);
       height: 28px;
+      margin-top: 2px;
       padding: 0;
       border: 0;
       border-radius: 5px;
@@ -122,23 +126,29 @@
       font: inherit;
       font-size: 13px;
       line-height: 1;
-      justify-self: end;
+      justify-self: start;
     }
     .toc-toggle:hover {
       background: var(--accent-soft);
     }
     .toc-toggle::before {
-      content: "▸";
-      display: inline-block;
+      content: "";
+      display: block;
+      width: 0;
+      height: 0;
+      border-top: 4px solid transparent;
+      border-bottom: 4px solid transparent;
+      border-left: 5px solid currentColor;
+      transform-origin: 45% 50%;
       transition: transform 0.15s ease;
     }
     .toc-toggle[aria-expanded="true"]::before {
       transform: rotate(90deg);
     }
     .toc-spacer {
-      width: var(--toc-toggle-size);
+      width: var(--toc-toggle-column);
       height: 28px;
-      justify-self: end;
+      justify-self: start;
     }
     .toc-node-link {
       min-width: 0;
@@ -159,7 +169,7 @@
     .toc-children::before {
       content: "";
       position: absolute;
-      left: 0;
+      left: -1px;
       top: 0;
       bottom: 4px;
       width: 2px;
@@ -284,6 +294,7 @@
       font-weight: 700;
     }
     .summary code,
+    .note-section-body code,
     .visual-note-body code,
     .key-points code {
       padding: 1px 4px;
@@ -293,12 +304,26 @@
       font-family: "Cascadia Code", Consolas, monospace;
       font-size: 0.92em;
     }
-    .summary pre {
+    .summary pre,
+    .note-section-body pre,
+    .visual-note-body pre {
       overflow: auto;
+      margin: 10px 0 12px;
       padding: 10px;
       border-radius: 6px;
       background: var(--accent);
       color: #f8fbfa;
+    }
+    .summary pre code,
+    .note-section-body pre code,
+    .visual-note-body pre code {
+      display: block;
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 13px;
+      line-height: 1.55;
+      white-space: pre;
     }
     .summary table,
     .note-section-body table,
