@@ -171,19 +171,145 @@ def _prune_missing_frame_refs(report: VideoReport) -> None:
                     section.visual_analyses = _analyses_for_frames(section.visual_analyses, section.frames)
 
 
+def _is_escaped(text: str, index: int) -> bool:
+    slash_count = 0
+    cursor = index - 1
+    while cursor >= 0 and text[cursor] == "\\":
+        slash_count += 1
+        cursor -= 1
+    return slash_count % 2 == 1
+
+
+def _find_unescaped(text: str, delimiter: str, start: int, *, allow_newline: bool) -> int:
+    index = start
+    while index < len(text):
+        if not allow_newline and text[index] == "\n":
+            return -1
+        if text.startswith(delimiter, index) and not _is_escaped(text, index):
+            return index
+        index += 1
+    return -1
+
+
+def _can_open_inline_math(text: str, index: int) -> bool:
+    previous_char = text[index - 1] if index else ""
+    next_char = text[index + 1] if index + 1 < len(text) else ""
+    return bool(
+        next_char
+        and not next_char.isspace()
+        and (not next_char.isdigit() or _looks_like_digit_started_math(text, index))
+        and (not previous_char or previous_char not in "$\\")
+    )
+
+
+def _find_inline_math_end(text: str, start: int) -> int:
+    index = start
+    while index < len(text):
+        if text[index] == "\n":
+            return -1
+        if text[index] == "$" and index and not _is_escaped(text, index) and not text.startswith("$$", index):
+            previous_char = text[index - 1]
+            next_char = text[index + 1] if index + 1 < len(text) else ""
+            if not previous_char.isspace() and next_char != "$":
+                return index
+        index += 1
+    return -1
+
+
 def _protect_spans(text: str) -> tuple[str, list[tuple[str, str]]]:
     spans: list[tuple[str, str]] = []
+    output: list[str] = []
 
     def store(kind: str, value: str) -> str:
         spans.append((kind, value))
         return f"\u0000SPAN{len(spans) - 1}\u0000"
 
-    math_pattern = re.compile(
-        r"(\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$\$[\s\S]*?\$\$|(?<![\w$])\$(?![\s$])[^$\n]+?(?<![\s$])\$(?![\w$]))"
-    )
-    text = math_pattern.sub(lambda match: store("math", match.group(0)), text)
-    text = re.sub(r"`([^`\n]+)`", lambda match: store("code", match.group(1)), text)
-    return text, spans
+    index = 0
+    while index < len(text):
+        if text[index] == "`" and not _is_escaped(text, index):
+            run_end = index + 1
+            while run_end < len(text) and text[run_end] == "`":
+                run_end += 1
+            delimiter = text[index:run_end]
+            close_index = text.find(delimiter, run_end)
+            line_break = text.find("\n", run_end)
+            if close_index != -1 and (line_break == -1 or close_index < line_break):
+                output.append(store("code", text[run_end:close_index]))
+                index = close_index + len(delimiter)
+                continue
+
+        if text.startswith(r"\[", index) and not _is_escaped(text, index):
+            close_index = _find_unescaped(text, r"\]", index + 2, allow_newline=True)
+            if close_index != -1:
+                output.append(store("math", text[index : close_index + 2]))
+                index = close_index + 2
+                continue
+
+        if text.startswith(r"\(", index) and not _is_escaped(text, index):
+            close_index = _find_unescaped(text, r"\)", index + 2, allow_newline=False)
+            if close_index != -1:
+                output.append(store("math", text[index : close_index + 2]))
+                index = close_index + 2
+                continue
+
+        if text.startswith("$$", index) and not _is_escaped(text, index):
+            close_index = _find_unescaped(text, "$$", index + 2, allow_newline=True)
+            if close_index != -1:
+                output.append(store("math", text[index : close_index + 2]))
+                index = close_index + 2
+                continue
+
+        if text[index] == "$" and not _is_escaped(text, index) and _can_open_inline_math(text, index):
+            close_index = _find_inline_math_end(text, index + 1)
+            if close_index != -1:
+                output.append(store("math", text[index : close_index + 1]))
+                index = close_index + 1
+                continue
+
+        output.append(text[index])
+        index += 1
+
+    return "".join(output), spans
+
+
+def _restore_plain_spans(text: str, spans: list[tuple[str, str]]) -> str:
+    for index, (kind, value) in enumerate(spans):
+        placeholder = f"\u0000SPAN{index}\u0000"
+        replacement = f"`{value}`" if kind == "code" else value
+        text = text.replace(placeholder, replacement)
+    return text
+
+
+def _protect_fenced_code_blocks(text: str) -> tuple[str, list[str]]:
+    fences: list[str] = []
+    output: list[str] = []
+    lines = text.splitlines(keepends=True)
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if not line.lstrip().startswith("```"):
+            output.append(line)
+            index += 1
+            continue
+
+        fence_lines = [line]
+        index += 1
+        while index < len(lines):
+            fence_lines.append(lines[index])
+            if lines[index].lstrip().startswith("```"):
+                index += 1
+                break
+            index += 1
+        fences.append("".join(fence_lines))
+        output.append(f"\u0000FENCE{len(fences) - 1}\u0000")
+
+    return "".join(output), fences
+
+
+def _restore_fenced_code_blocks(text: str, fences: list[str]) -> str:
+    for index, value in enumerate(fences):
+        text = text.replace(f"\u0000FENCE{index}\u0000", value)
+    return text
 
 
 def _restore_spans(text: str, spans: list[tuple[str, str]]) -> str:
@@ -198,6 +324,7 @@ def _restore_spans(text: str, spans: list[tuple[str, str]]) -> str:
 
 
 def _md_inline(text: str) -> Markup:
+    text = _normalize_markdown_text(text or "")
     protected, spans = _protect_spans(text)
     html = str(escape(protected))
     html = re.sub(
@@ -220,10 +347,23 @@ def _repair_latex_control_escapes(text: str) -> str:
         "\r" + "angle": r"\rangle",
         "\r" + "ho": r"\rho",
         "\t" + "heta": r"\theta",
+        "\t" + "ilde": r"\tilde",
         "\t" + "imes": r"\times",
         "\t" + "o": r"\to",
         "\b" + "ar": r"\bar",
+        "\b" + "ackslash": r"\backslash",
+        "\b" + "ecause": r"\because",
+        "\b" + "egin": r"\begin",
+        "\b" + "eta": r"\beta",
+        "\b" + "ig": r"\big",
+        "\b" + "inom": r"\binom",
+        "\b" + "matrix": r"\bmatrix",
+        "\b" + "mod": r"\bmod",
+        "\b" + "oldsymbol": r"\boldsymbol",
+        "\b" + "ot": r"\bot",
+        "\b" + "oxed": r"\boxed",
         "\f" + "rac": r"\frac",
+        "\f" + "orall": r"\forall",
         "\n" + "abla": r"\nabla",
     }
     for broken, fixed in replacements.items():
@@ -235,15 +375,30 @@ def _normalize_overescaped_latex(text: str) -> str:
     # Some payloads over-escape LaTeX before JSON encoding, so after JSON parsing
     # math still contains `\\sin` instead of `\sin`. MathJax treats that as a
     # line-break command plus text and may render the formula as empty/error.
-    math_pattern = re.compile(
-        r"(\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$\$[\s\S]*?\$\$|(?<![\w$])\$(?![\s$])[^$\n]+?(?<![\s$])\$(?![\w$]))"
+    protected, spans = _protect_spans(text)
+    normalized_spans = [
+        (
+            kind,
+            re.sub(r"\\\\(?=[A-Za-z,;!])", r"\\", value) if kind == "math" else value,
+        )
+        for kind, value in spans
+    ]
+    return _restore_plain_spans(protected, normalized_spans)
+
+
+def _looks_like_digit_started_math(text: str, dollar_index: int) -> bool:
+    closing_index = text.find("$", dollar_index + 1)
+    if closing_index == -1:
+        return False
+    content = text[dollar_index + 1 : closing_index]
+    if "\n" in content:
+        return False
+    return bool(
+        re.search(
+            r"(\\[A-Za-z]+|[_^{}<>|=]|[A-Za-z_]\s*[+\-*/=<>]|[+\-*/=<>]\s*[A-Za-z_])",
+            content,
+        )
     )
-
-    def normalize_span(match: re.Match[str]) -> str:
-        value = match.group(0)
-        return re.sub(r"\\\\(?=[A-Za-z,;!])", r"\\", value)
-
-    return math_pattern.sub(normalize_span, text)
 
 
 def _escape_unmatched_math_dollars(text: str) -> str:
@@ -266,7 +421,7 @@ def _escape_unmatched_math_dollars(text: str) -> str:
             not in_inline_math
             and next_char
             and not next_char.isspace()
-            and not next_char.isdigit()
+            and (not next_char.isdigit() or _looks_like_digit_started_math(text, index))
             and (not previous_char or previous_char not in "$\\")
         )
         can_close = (
@@ -295,79 +450,138 @@ def _simplify_standalone_latex_symbols(text: str) -> str:
     return text
 
 
-def _md_html(text: str) -> Markup:
-    text = _escape_unmatched_math_dollars(
-        _normalize_overescaped_latex(
-            _simplify_standalone_latex_symbols(_repair_latex_control_escapes(text or ""))
+def _normalize_ascii_math_expressions(text: str) -> str:
+    protected, spans = _protect_spans(text)
+    greek_names = {
+        "alpha": r"\alpha",
+        "beta": r"\beta",
+        "gamma": r"\gamma",
+        "delta": r"\delta",
+        "epsilon": r"\epsilon",
+        "lambda": r"\lambda",
+        "theta": r"\theta",
+    }
+
+    def to_latex(match: re.Match[str]) -> str:
+        expression = match.group(1).strip()
+        latex = expression
+        for name, command in greek_names.items():
+            latex = re.sub(rf"\b{name}\b", lambda _match, value=command: value, latex)
+        latex = re.sub(r"\s*\*\s*", " ", latex)
+        latex = re.sub(
+            r"\\alpha\s+\\lambda\s*/\s*m\b",
+            r"\\frac{\\alpha \\lambda}{m}",
+            latex,
         )
-    ).strip()
+        return f"$({latex})$"
+
+    protected = re.sub(
+        r"\((?=[^()\n]*(?:alpha|beta|gamma|delta|epsilon|lambda|theta)\b)(?=[^()\n]*[+\-*/=<>])([^()\n]{3,80})\)",
+        to_latex,
+        protected,
+    )
+    return _restore_plain_spans(protected, spans)
+
+
+def _normalize_markdown_text(text: str) -> str:
+    text, fences = _protect_fenced_code_blocks(text or "")
+    text = _repair_latex_control_escapes(text)
+    text = _simplify_standalone_latex_symbols(text)
+    text = _normalize_overescaped_latex(text)
+    text = _escape_unmatched_math_dollars(text)
+    text = _normalize_ascii_math_expressions(text)
+    return _restore_fenced_code_blocks(text, fences)
+
+
+def _repair_inline_ordered_markers(source_line: str) -> str:
+    protected, spans = _protect_spans(source_line)
+    protected = re.sub(r"\\(?=\d{1,2}[.．、](?!\d)\s*\S)", "\n", protected)
+    protected = re.sub(
+        r"(^|[\s：:；;。！？!?])(\d{1,2}[.．、](?!\d))\s*(?=\S)",
+        lambda match: (
+            f"{match.group(2)} "
+            if match.group(1) == ""
+            else f"{match.group(1).rstrip()}\n{match.group(2)} "
+        ),
+        protected,
+    )
+    return _restore_plain_spans(protected, spans)
+
+
+def _split_inline_ordered_lists(value: str) -> str:
+    fixed_lines: list[str] = []
+    for source_line in value.splitlines():
+        if source_line.strip().startswith("|") and source_line.strip().endswith("|"):
+            fixed_lines.append(source_line)
+            continue
+        if re.match(r"^\s*#{1,6}\s+\d{1,2}[.．、](?!\d)", source_line):
+            fixed_lines.append(source_line)
+            continue
+        fixed_lines.append(_repair_inline_ordered_markers(source_line))
+    return "\n".join(fixed_lines)
+
+
+def _table_cells(value: str) -> list[str]:
+    line = value.strip()
+    if line.startswith("|"):
+        line = line[1:]
+    if line.endswith("|"):
+        line = line[:-1]
+
+    protected, spans = _protect_spans(line)
+    escaped_pipe = "\u0000PIPE\u0000"
+    protected = protected.replace(r"\|", escaped_pipe)
+    return [
+        _restore_plain_spans(cell.replace(escaped_pipe, r"\|"), spans).strip()
+        for cell in protected.split("|")
+    ]
+
+
+def _is_table_separator(value: str) -> bool:
+    cells = _table_cells(value)
+    return bool(cells) and all(re.fullmatch(r":?-{3,}:?", cell.strip()) for cell in cells)
+
+
+def _expand_compact_table_line(value: str) -> list[str]:
+    line = value.strip()
+    if not (
+        line.startswith("|")
+        and line.endswith("|")
+        and re.search(r"\|\s*:?-{3,}:?\s*\|", line)
+        and re.search(r"\|\s+\|", line)
+    ):
+        return [value]
+
+    rows: list[str] = []
+    for piece in re.split(r"\|\s+\|", line):
+        piece = piece.strip()
+        if not piece:
+            continue
+        if not piece.startswith("|"):
+            piece = "| " + piece
+        if not piece.endswith("|"):
+            piece = piece + " |"
+        rows.append(piece)
+
+    if len(rows) >= 2 and _is_table_separator(rows[1]):
+        return rows
+    return [value]
+
+
+def _md_html(text: str) -> Markup:
+    text = _normalize_markdown_text(text or "").strip()
     if not text:
         return Markup("")
 
     normalized = text.replace("\r\n", "\n").replace("\r", "\n")
-
-    def split_inline_ordered_lists(value: str) -> str:
-        fixed_lines: list[str] = []
-        for source_line in value.splitlines():
-            if re.match(r"^\s*#{1,6}\s+\d{1,2}[.．、](?!\d)", source_line):
-                fixed_lines.append(source_line)
-                continue
-            if re.match(r"^\s*\d{1,2}[.．、](?!\d)\s+", source_line):
-                fixed_lines.append(source_line)
-                continue
-            fixed_lines.append(
-                re.sub(
-                    r"(^|[\s：:；;。！？!?])(\d{1,2}[.．、](?!\d))\s*(?=\S)",
-                    lambda match: (
-                        f"{match.group(2)} "
-                        if match.group(1) == ""
-                        else f"{match.group(1).rstrip()}\n{match.group(2)} "
-                    ),
-                    source_line,
-                )
-            )
-        return "\n".join(fixed_lines)
-
-    normalized = split_inline_ordered_lists(normalized)
-    def table_cells(value: str) -> list[str]:
-        stripped = value.strip().strip("|")
-        return [cell.strip() for cell in stripped.split("|")]
+    normalized = _split_inline_ordered_lists(normalized)
 
     def tsv_cells(value: str) -> list[str]:
         return [cell.strip() for cell in value.strip().split("\t")]
 
-    def is_table_separator(value: str) -> bool:
-        cells = table_cells(value)
-        return bool(cells) and all(re.fullmatch(r":?-{3,}:?", cell.strip()) for cell in cells)
-
-    def expand_compact_table_line(value: str) -> list[str]:
-        line = value.strip()
-        if not (
-            line.startswith("|")
-            and line.endswith("|")
-            and re.search(r"\|\s*:?-{3,}:?\s*\|", line)
-            and re.search(r"\|\s+\|", line)
-        ):
-            return [value]
-
-        rows: list[str] = []
-        for piece in re.split(r"\|\s+\|", line):
-            piece = piece.strip()
-            if not piece:
-                continue
-            if not piece.startswith("|"):
-                piece = "| " + piece
-            if not piece.endswith("|"):
-                piece = piece + " |"
-            rows.append(piece)
-
-        if len(rows) >= 2 and is_table_separator(rows[1]):
-            return rows
-        return [value]
-
     expanded_lines: list[str] = []
     for raw_line in normalized.splitlines():
-        expanded_lines.extend(expand_compact_table_line(raw_line))
+        expanded_lines.extend(_expand_compact_table_line(raw_line))
     normalized = "\n".join(expanded_lines)
     lines = normalized.splitlines()
     html: list[str] = []
@@ -398,7 +612,7 @@ def _md_html(text: str) -> Markup:
 
     def format_inline(value: str) -> Markup:
         rendered = str(_md_inline(value))
-        if "$" in value or r"\(" in value or r"\[" in value:
+        if "$" in value or r"\(" in value or r"\[" in value or "<strong>" in rendered:
             return Markup(rendered)
         return Markup(
             re.sub(
@@ -410,15 +624,15 @@ def _md_html(text: str) -> Markup:
         )
 
     def is_table_row(value: str) -> bool:
-        return value.startswith("|") and value.endswith("|") and len(table_cells(value)) >= 2
+        return value.startswith("|") and value.endswith("|") and len(_table_cells(value)) >= 2
 
     def is_tsv_row(value: str) -> bool:
         cells = tsv_cells(value)
         return "\t" in value and len(cells) >= 2 and sum(bool(cell) for cell in cells) >= 2
 
     def render_table(start_index: int) -> int:
-        header = table_cells(lines[start_index].strip())
-        separator = table_cells(lines[start_index + 1].strip())
+        header = _table_cells(lines[start_index].strip())
+        separator = _table_cells(lines[start_index + 1].strip())
         alignments = []
         for cell in separator:
             align = ""
@@ -442,7 +656,7 @@ def _md_html(text: str) -> Markup:
             if not is_table_row(row_line):
                 break
             html.append("<tr>")
-            for cell_index, cell in enumerate(table_cells(row_line)):
+            for cell_index, cell in enumerate(_table_cells(row_line)):
                 align = alignments[cell_index] if cell_index < len(alignments) else ""
                 html.append(f"<td{align}>{format_inline(cell)}</td>")
             html.append("</tr>")
@@ -546,7 +760,7 @@ def _md_html(text: str) -> Markup:
         if (
             line_index + 1 < len(lines)
             and is_table_row(line)
-            and is_table_separator(lines[line_index + 1].strip())
+            and _is_table_separator(lines[line_index + 1].strip())
         ):
             flush_paragraph()
             close_lists()

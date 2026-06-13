@@ -42,16 +42,16 @@
                 {% if visible_children %}
                   <button class="toc-toggle" type="button" aria-expanded="false" aria-controls="toc-children-{{ block.id }}" aria-label="展开 {{ block.title }}"></button>
                   {% if has_link_target %}
-                    <a class="toc-node-link is-branch" href="#{{ block.id }}" data-toc-branch>{{ block.title }}</a>
+                    <a class="toc-node-link is-branch" href="#{{ block.id }}" data-toc-branch>{{ block.title|md_inline }}</a>
                   {% else %}
-                    <span class="toc-node-link toc-label is-branch" data-toc-branch>{{ block.title }}</span>
+                    <span class="toc-node-link toc-label is-branch" data-toc-branch>{{ block.title|md_inline }}</span>
                   {% endif %}
                 {% else %}
                   <span class="toc-spacer"></span>
                   {% if has_link_target %}
-                    <a class="toc-node-link" href="#{{ block.id }}">{{ block.title }}</a>
+                    <a class="toc-node-link" href="#{{ block.id }}">{{ block.title|md_inline }}</a>
                   {% else %}
-                    <span class="toc-node-link toc-label">{{ block.title }}</span>
+                    <span class="toc-node-link toc-label">{{ block.title|md_inline }}</span>
                   {% endif %}
                 {% endif %}
                 {% if toc_action %}
@@ -94,9 +94,9 @@
                   {% set toc_action = visible_roots[0]|toc_action_label %}
                   {% set has_link_target = visible_roots[0]|toc_has_link_target %}
                   {% if has_link_target %}
-                    <a class="toc-node-link" href="#{{ visible_roots[0].id }}">{{ part_title }}</a>
+                    <a class="toc-node-link" href="#{{ visible_roots[0].id }}">{{ part_title|md_inline }}</a>
                   {% else %}
-                    <span class="toc-node-link toc-label">{{ part_title }}</span>
+                    <span class="toc-node-link toc-label">{{ part_title|md_inline }}</span>
                   {% endif %}
                   {% if toc_action %}
                     <button class="toc-action node-action" type="button" data-action="{{ 'redo' if visible_roots[0].status == 'expanded' else 'expand' }}" data-report="report.json" data-block-id="{{ visible_roots[0].id }}">{{ toc_action }}</button>
@@ -108,7 +108,7 @@
               {% else %}
                 <div class="toc-row">
                   <button class="toc-toggle" type="button" aria-expanded="false" aria-controls="toc-part-children-{{ part.page }}" aria-label="展开 {{ part_title }}"></button>
-                  <a class="toc-node-link is-branch" href="#part-{{ part.page }}" data-toc-branch>{{ part_title }}</a>
+                  <a class="toc-node-link is-branch" href="#part-{{ part.page }}" data-toc-branch>{{ part_title|md_inline }}</a>
                   <span></span>
                 </div>
                 <ul class="toc-tree toc-children" id="toc-part-children-{{ part.page }}" hidden>
@@ -134,7 +134,7 @@
         {% if part.blocks and part is has_body_content %}
         <article class="part" id="part-{{ part.page }}">
           {% if not (part.page == 0 and part.title == "分 P 目录") %}
-            <h2>{{ part.title if part.page == 0 else ("P" ~ part.page ~ " " ~ part.title) }}</h2>
+            <h2>{{ (part.title if part.page == 0 else ("P" ~ part.page ~ " " ~ part.title))|md_inline }}</h2>
           {% endif %}
           {% if part.selected_subtitle_track %}
             <div class="meta">
@@ -174,7 +174,7 @@
                     </a>
                   </span>
                   <span class="block-title">
-                    {{ display_title }}
+                    {{ display_title|md_inline }}
                   </span>
                 </summary>
                 {% if block.summary and not block.sections %}
@@ -197,7 +197,7 @@
                   <div class="note-sections">
                     {% for section in block.sections %}
                       <section class="note-section">
-                        <h3>{{ section.title }}</h3>
+                        <h3>{{ section.title|md_inline }}</h3>
                         <div class="note-section-body">{{ section.body|md_html }}</div>
                         {% for frame in section.frames %}
                           <div class="visual">
